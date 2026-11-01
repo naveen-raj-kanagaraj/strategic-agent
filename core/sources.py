@@ -325,6 +325,9 @@ def hacker_news(query: str) -> list:
     return _cached(("hn", query, ""), fetch)
 
 
+_SERPER_OUT = [False]   # last Serper call failed for lack of credits
+
+
 def _serper(endpoint: str, q: str, region: str, num: int = 10) -> list:
     key = os.getenv("SERPER_API_KEY")
     if not key:
@@ -335,9 +338,14 @@ def _serper(endpoint: str, q: str, region: str, num: int = 10) -> list:
     store_bump("serper")
     if r.status_code in (400, 401, 403) and "credit" in r.text.lower():
         from core import alerts
+        _SERPER_OUT[0] = True
         alerts.notify("serper_credits", "Serper is out of credits, so web search, X/Instagram and YouTube results "
                       "are off. Top up at serper.dev, or set NEWS_SOCIAL=false and NEWS_YOUTUBE=false.", 360)
     r.raise_for_status()
+    if _SERPER_OUT[0]:                     # credits are back (topped up): say so once, nothing to restart
+        _SERPER_OUT[0] = False
+        from core import alerts
+        alerts.send_owner("Serper is working again: web search, X/Instagram and YouTube results are back on.")
     return r.json().get("organic" if endpoint == "search" else endpoint, [])
 
 

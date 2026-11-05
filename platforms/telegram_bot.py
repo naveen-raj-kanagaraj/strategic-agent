@@ -1058,8 +1058,8 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user:
     if waiting and not text.startswith("/"):
         await run_file_action(update, context, user, waiting, text, "typed")
         return
-    if downloader.wants_download(text):
-        await download_link(update, context, downloader.find_url(text))
+    if downloader.wants_download(text) or (downloader.only_link(text) and downloader.is_video_link(downloader.any_url(text))):
+        await download_link(update, context, downloader.find_url(text) or downloader.any_url(text))   # file first, no questions
         return
     await run_chat(update, context, link_prompt(text))
 
@@ -1448,8 +1448,8 @@ async def handle_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await gate(update)
     if not user:
         return
-    if downloader.wants_download(text):
-        await download_link(update, context, downloader.find_url(text))
+    if downloader.wants_download(text) or (downloader.only_link(text) and downloader.is_video_link(downloader.any_url(text))):
+        await download_link(update, context, downloader.find_url(text) or downloader.any_url(text))
         return
     text = link_prompt(text)
     quoted = msg.reply_to_message

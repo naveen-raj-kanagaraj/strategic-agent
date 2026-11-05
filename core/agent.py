@@ -91,7 +91,13 @@ def build_system(uid: str, is_owner: bool, platform: str, group: dict = None, sp
     base = load_prompt("owner" if is_owner else "public")
     tz = store.user_tz(store.get_user(uid) or {})
     now = datetime.now(tz).strftime("%A, %B %d %Y, %I:%M %p")
-    dynamic = f"Current time: {now} ({tz.key})\nPlatform: {platform}"
+    dynamic = (f"Current time: {now} ({tz.key})\nPlatform: {platform}\n"
+               f"Today is {now.split(',')[0]}, {datetime.now(tz):%d %B %Y}. Your own knowledge stops well before today: for anything "
+               "that could have happened or changed recently (elections, results, news, prices, schedules, who holds a role), "
+               "call web_search first and answer from the newest dated results, never from memory. If results disagree, the "
+               "newest wins; say the date of what you report.\n"
+               "Answer the question that was asked. Don't bring in the creator economy, my brand, gaming or my career unless I "
+               "ask about them or they are clearly part of the question.")
     if group and group.get("inline"):
         dynamic += ("\n\nINLINE MODE: your answer is being posted into a chat between the user and other people "
                     "(they typed @ and your name in that chat). Write a standalone answer the whole chat can read: "

@@ -26,7 +26,7 @@ OWNER_TELEGRAM_ID = os.getenv("OWNER_TELEGRAM_ID")
 DIGEST_TO = os.getenv("DIGEST_TO", "telegram").lower()
 # Local times for the two daily briefs, and minutes between breaking-news checks
 DIGEST_TIMES = [t.strip() for t in os.getenv("DIGEST_TIMES", "08:00,19:00").split(",") if t.strip()]
-BREAKING_EVERY_MIN = int(os.getenv("BREAKING_EVERY_MIN", "60"))
+BREAKING_EVERY_MIN = int(os.getenv("BREAKING_EVERY_MIN", "20"))
 client = llm.Client("digest")
 
 NEWS_TIMES = [t.strip() for t in os.getenv("NEWS_TIMES", "08:00,19:00").split(",") if t.strip()]

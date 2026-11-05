@@ -31,21 +31,31 @@ def web_search(query: str) -> str:
             "X-API-KEY": os.getenv("SERPER_API_KEY"),
             "Content-Type": "application/json"
         }
-        payload = {"q": query, "num": 5}
+        payload = {"q": query, "num": 6}
         response = requests.post(url, headers=headers, json=payload, timeout=15)
         store.bump("serper")
         data = response.json()
+        try:      # Google News, last 24 hours: what happened today, newest first (Google's main results lag)
+            news = requests.post("https://google.serper.dev/news", headers=headers,
+                                 json={"q": query, "num": 6, "tbs": "qdr:d"}, timeout=15).json().get("news", [])
+            store.bump("serper")
+        except Exception:
+            news = []
 
-        output = ""
+        output = f"Searched on {datetime.now(_tz()):%A %d %B %Y, %I:%M %p}. Prefer the newest dated results; they override anything you remember.\n\n"
+        if news:
+            output += "NEWS, LAST 24 HOURS:\n"
+            for r in news[:6]:
+                output += f"{r.get('date', '')} | {r.get('source', '')} | {r.get('title', '')}\n{r.get('snippet', '')}\nURL: {r.get('link', '')}\n\n"
+            output += "WEB:\n"
         if "answerBox" in data:
-            output += f"Answer: {data['answerBox'].get('answer', '')}\n\n"
-
-        for r in data.get("organic", [])[:5]:
-            output += f"Title: {r.get('title', '')}\n"
+            output += f"Answer: {data['answerBox'].get('answer', '') or data['answerBox'].get('snippet', '')}\n\n"
+        for r in data.get("organic", [])[:6]:
+            output += f"Title: {r.get('title', '')}{' (' + r['date'] + ')' if r.get('date') else ''}\n"
             output += f"Summary: {r.get('snippet', '')}\n"
             output += f"URL: {r.get('link', '')}\n\n"
 
-        return output.strip() if output else "No results found."
+        return output.strip() if (news or data.get("organic")) else "No results found."
     except Exception as e:
         return f"Search failed: {str(e)}"
 

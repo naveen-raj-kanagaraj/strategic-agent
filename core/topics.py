@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from core import sources, store
 
-LIVE_EVERY_MIN = int(os.getenv("LIVE_EVERY_MIN", "30"))
+LIVE_EVERY_MIN = int(os.getenv("LIVE_EVERY_MIN", "15"))
 LIVE_MAX_PER_DAY = int(os.getenv("LIVE_MAX_PER_DAY", "8"))
 LIVE_MAX_AGE_HOURS = 4
 QUIET_START, QUIET_END = 23, 7   # no live updates 11 PM - 7 AM local time

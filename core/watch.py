@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from core import sources, store
 
-ALERT_EVERY_MIN = int(os.getenv("ALERT_EVERY_MIN", "30"))
+ALERT_EVERY_MIN = int(os.getenv("ALERT_EVERY_MIN", "10"))
 ALERT_MAX_AGE_HOURS = int(os.getenv("ALERT_MAX_AGE_HOURS", "6"))
 MAX_WATCHES_OWNER = 20
 MAX_WATCHES_PUBLIC = int(os.getenv("MAX_WATCHES_PUBLIC", "3"))

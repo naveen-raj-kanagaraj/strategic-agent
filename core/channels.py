@@ -21,7 +21,7 @@ import requests
 
 from core import store
 
-CHANNEL_EVERY_MIN = int(os.getenv("CHANNEL_EVERY_MIN", "15"))
+CHANNEL_EVERY_MIN = int(os.getenv("CHANNEL_EVERY_MIN", "5"))
 KEEP_DAYS = 3
 FIRST_SYNC_HOURS = 12               # first time we see a channel, take posts from the last 12h only
 PUBLIC_MAX_PER_USER = int(os.getenv("CHANNELS_MAX_PER_USER", "10"))

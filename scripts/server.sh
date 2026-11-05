@@ -12,6 +12,10 @@ case "${1:-status}" in
           uptime -p; df -h / | awk "NR==2{print \"Disk used: \"\$5}"; free -m | awk "/Mem/{print \"Memory used: \"\$3\"/\"\$2\" MB\"}";
           echo "--- last log lines ---"; sudo journalctl -u pesagent -n 15 --no-pager -o cat' ;;
   logs) $SSH 'sudo journalctl -u pesagent -f -n 40 -o cat' ;;
+  google)
+    [ -f data/google_token.json ] || { echo "Run: python scripts/google_login.py path/to/client_secret.json first"; exit 1; }
+    scp -i "$KEY" data/google_token.json "${USER_NAME:-ubuntu}@$IP:~/my-agent/data/google_token.json" && \
+    $SSH 'chmod 600 ~/my-agent/data/google_token.json && sudo systemctl restart pesagent && sleep 5 && systemctl is-active pesagent' ;;
   restart) $SSH 'sudo systemctl restart pesagent && sleep 5 && systemctl is-active pesagent' ;;
   stop) $SSH 'sudo systemctl stop pesagent && echo stopped' ;;
   update)

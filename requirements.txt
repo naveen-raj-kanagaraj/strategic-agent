@@ -19,3 +19,5 @@ openai
 telethon
 matplotlib
 waitress==3.0.2
+edge-tts
+google-auth-oauthlib

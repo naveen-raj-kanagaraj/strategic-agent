@@ -292,6 +292,13 @@ Current time: {now}"""
     seen.remember("owner|brief", used)
 
     final = f"BRIEFING\n{now}\n\n{analysis.strip()}"
+    try:            # your day first: calendar and important unread email (when Google is connected)
+        from core import gsuite
+        day = gsuite.day_brief(store.OWNER_TZ)
+        if day:
+            final = f"BRIEFING\n{now}\n\n{day}\n\n{analysis.strip()}"
+    except Exception as e:
+        print(f"Day brief unavailable: {e}")
     return final
 
 
@@ -420,6 +427,10 @@ def start_digest_scheduler():
     schedule.every().monday.at(talent.WEEKLY_TIME).do(talent.send_weekly, send_telegram)
     from core import backup
     schedule.every().day.at(os.getenv("BACKUP_TIME", "03:00")).do(backup.nightly)
+    from core import speak, trends
+    if trends.TREND_EVERY_MIN > 0:
+        schedule.every(trends.TREND_EVERY_MIN).minutes.do(lambda: _pool.submit(
+            trends.run, lambda t: send_telegram(t), lambda t: speak.send_voice(t, OWNER_TELEGRAM_ID)))
     schedule.every().day.at("03:30").do(store.prune_seen)
     schedule.every().day.at("03:35").do(store.prune_activity)
     while True:

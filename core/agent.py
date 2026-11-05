@@ -233,11 +233,37 @@ def _cached(messages: list) -> list:
     return messages[:-1] + [last]
 
 
+NEWS_RE = re.compile(r"\b(news|latest|newest|recent(ly)?|today|tonight|yesterday|this (week|morning|evening)|right now|"
+                     r"currently|current|update[sd]?|what('s| is) happening|happening|breaking|headlines?|score[sd]?|"
+                     r"results?|won|wins?|elections?|midterms?|polls?|prices?|stock|market|live)\b", re.I)
+
+
+def _last_user_text(messages) -> str:
+    for m in reversed(messages):
+        if m.get("role") != "user":
+            continue
+        c = m.get("content")
+        if isinstance(c, str):
+            return c
+        if isinstance(c, list) and not any((b.get("type") if isinstance(b, dict) else getattr(b, "type", "")) == "tool_result" for b in c):
+            return " ".join((b.get("text") or "") if isinstance(b, dict) else (getattr(b, "text", "") or "") for b in c)
+        return ""
+    return ""
+
+
 def _run_anthropic(uid, model, system, tools, messages, level="off") -> str:
+    # Asking for news or anything current: search first, every time (the model can't skip it and answer from memory)
+    force = any(t.get("name") == "web_search" for t in tools or []) and bool(NEWS_RE.search(_last_user_text(messages)))
     for _ in range(MAX_TOOL_ROUNDS + 1):
         last_round = _ == MAX_TOOL_ROUNDS
+        choice = {"type": "none"} if last_round else {"type": "auto"}
+        if force and _ == 0:
+            if level == "off":
+                choice = {"type": "tool", "name": "web_search"}
+            else:   # thinking can't be combined with a forced tool: switch thinking off for this first step
+                level, choice = "off", {"type": "tool", "name": "web_search"}
         kwargs = dict(_uid=uid, model=model, max_tokens=REPLY_MAX_TOKENS, system=system, tools=tools,
-                      tool_choice={"type": "none"} if last_round else {"type": "auto"}, messages=_cached(messages))
+                      tool_choice=choice, messages=_cached(messages))
         kwargs.update(_thinking_kwargs(model, level))
         c = context.get()
         try:
@@ -287,7 +313,8 @@ def _run_openai_compat(uid, provider, model, system, tools, history, level="off"
         last_round = _ == MAX_TOOL_ROUNDS
         kwargs = {"model": model, "messages": messages, limit_key: REPLY_MAX_TOKENS + (4000 if level != "off" else 0)}
         if not last_round:
-            kwargs.update(tools=otools, tool_choice="auto")
+            first_news = _ == 0 and any(t.get("name") == "web_search" for t in tools or []) and bool(NEWS_RE.search(_last_user_text(history)))
+            kwargs.update(tools=otools, tool_choice={"type": "function", "function": {"name": "web_search"}} if first_news else "auto")
         if level != "off":
             kwargs["reasoning_effort"] = level
         try:

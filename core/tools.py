@@ -77,6 +77,10 @@ def watch_keyword(keyword: str) -> str:
     return watch.add(ctx.uid, u.get("chat_id") or (ctx.chat_id if ctx.platform == "telegram" else ""), keyword)
 
 
+def _owner_only():
+    return None if context.get().is_owner else "Email and calendar are private to the bot owner."
+
+
 def _talent_only():
     return None if context.get().is_owner else "The talent tracker is private to the bot owner."
 
@@ -307,6 +311,16 @@ ALL_TOOLS = [
             "for Apple Calendar. start/end are ISO date-times in the user's timezone, e.g. 2026-10-16T13:00.",
             {"title": S, "start": S, "end": S, "location": S, "details": S,
              "all_day": {"type": "boolean"}}, ["title", "start"]),
+    _schema("my_emails", "The owner's Gmail (read only): recent emails with sender, subject and preview, important and "
+            "unread first. query uses Gmail search syntax (from:, subject:, is:unread...); empty = everything except "
+            "promotions/social. Summarise; never claim you can send, delete or change email.",
+            {"query": S, "hours": I}),
+    _schema("my_calendar", "The owner's Google Calendar: events from today for `days` days.", {"days": I}),
+    _schema("add_to_calendar", "Add an event to the owner's Google Calendar. First call WITHOUT confirmed to get the "
+            "exact event, show it to the user and ask yes/no; only after they say yes call again with confirmed=true. "
+            "start/end: ISO date-times in the user's timezone, e.g. 2026-11-06T15:00.",
+            {"title": S, "start": S, "end": S, "location": S, "details": S, "confirmed": {"type": "boolean"}},
+            ["title", "start"]),
     _schema("whatsapp_message", "Write a WhatsApp message and give a button that opens WhatsApp with it filled in "
             "(to a phone number with country code if given, otherwise they pick the chat).",
             {"text": S, "phone": S}, ["text"]),
@@ -314,7 +328,7 @@ ALL_TOOLS = [
 
 TALENT_TOOLS = {"save_creator", "find_creators", "save_deal", "pipeline", "scout_creator",
                 "get_brand_voice", "save_brand_voice"}
-OWNER_ONLY = TALENT_TOOLS | ({"generate_image"} if not PUBLIC_IMAGE_GEN else set())
+OWNER_ONLY = TALENT_TOOLS | {"my_emails", "my_calendar", "add_to_calendar"} | ({"generate_image"} if not PUBLIC_IMAGE_GEN else set())
 
 
 def tools_for(is_owner: bool) -> list:
@@ -328,6 +342,13 @@ TOOLS = ALL_TOOLS
 def execute_tool(name: str, inputs: dict) -> str:
     handlers = {
         "web_search": lambda: web_search(inputs["query"]),
+        "my_emails": lambda: _owner_only() or __import__("core.gsuite", fromlist=["x"]).email_text(
+            inputs.get("query", ""), int(inputs.get("hours") or 24)),
+        "my_calendar": lambda: _owner_only() or __import__("core.gsuite", fromlist=["x"]).events_text(
+            int(inputs.get("days") or 1), _tz().key),
+        "add_to_calendar": lambda: _owner_only() or __import__("core.gsuite", fromlist=["x"]).add_event(
+            inputs["title"], inputs["start"], inputs.get("end", ""), inputs.get("location", ""), inputs.get("details", ""),
+            _tz().key, bool(inputs.get("confirmed"))),
         "read_url": lambda: read_url(inputs["url"]),
         "scan_sources": lambda: scan_sources(inputs["query"]),
         "download_video": lambda: tool_download_video(inputs["url"]),

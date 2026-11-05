@@ -76,6 +76,8 @@ save_note / get_notes / delete_note: tasks, ideas, research, strategy
 generate_image: thumbnails, mockups, concept art
 calculate: math, financial modeling, projections
 get_datetime: current date and time
+my_emails: my Gmail, read only (summaries, search, "anything from X?"). You can't send, delete or change mail.
+my_calendar / add_to_calendar: my Google Calendar. To add an event, show me the exact event and get a yes before calling add_to_calendar with confirmed=true.
 
 OUTPUT STYLE
 

@@ -1127,10 +1127,55 @@ async def download_link(update: Update, context: ContextTypes.DEFAULT_TYPE, url:
         pass
 
 
+def _remember_sent(chat_id, message_id, text):
+    """Which text each Telegram message carried, so an edit can rewind the conversation to it (last 300 per chat)."""
+    key = f"tgsent:{chat_id}"
+    m = store.kv_get(key) or {}
+    m[str(message_id)] = text
+    if len(m) > 300:
+        m = dict(list(m.items())[-300:])
+    store.kv_set(key, m)
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await gate(update)
     if user:
+        _remember_sent(update.effective_chat.id, update.message.message_id, update.message.text)
         await process_text(update, context, user, update.message.text)
+
+
+async def handle_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Editing an earlier message works like Claude: the conversation goes back to just before that message (later
+    messages and answers are dropped from memory) and the edited text is answered fresh."""
+    msg = update.edited_message
+    if not (msg and msg.text):
+        return
+    shim = types.SimpleNamespace(message=msg, edited_message=None, effective_user=update.effective_user,
+                                 effective_chat=update.effective_chat, effective_message=msg)
+    user = await gate(shim)
+    if not user:
+        return
+    old = (store.kv_get(f"tgsent:{msg.chat_id}") or {}).get(str(msg.message_id))
+    from core.memory import Memory
+    mem = Memory()
+    hist = mem.get(user["uid"], "telegram")
+    cut = None
+    if old:
+        for i in range(len(hist) - 1, -1, -1):
+            m = hist[i]
+            c = m.get("content")
+            if m.get("role") == "user" and isinstance(c, str) and (c.strip() == old.strip() or c.startswith(old.strip()[:60])):
+                cut = i
+                break
+    if cut is not None:
+        mem.save(user["uid"], "telegram", hist[:cut])
+        dropped = (len(hist) - cut) // 2
+        note = f"Edited. Starting again from that message ({dropped} later exchange{'s' if dropped != 1 else ''} forgotten)."
+    else:
+        note = "Edited. Answering the new version."
+    await msg.reply_text(note)
+    _remember_sent(msg.chat_id, msg.message_id, msg.text)
+    await process_text(shim, context, user, msg.text)
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1943,7 +1988,8 @@ def run_telegram():
     app.add_handler(ChosenInlineResultHandler(on_inline_chosen))
     app.add_handler(CommandHandler(["botoff", "boton"], cmd_bot_toggle))
     app.add_handler(CommandHandler("updates", cmd_updates, filters=PRIVATE))
-    app.add_handler(MessageHandler(PRIVATE & filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(PRIVATE & filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, handle_edit))
+    app.add_handler(MessageHandler(PRIVATE & filters.UpdateType.MESSAGE & filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(PRIVATE & (filters.VOICE | filters.AUDIO), handle_voice))
     app.add_handler(MessageHandler(PRIVATE & filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(PRIVATE & filters.Document.ALL, handle_document))

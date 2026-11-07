@@ -156,24 +156,72 @@ def cancel_reminder(reminder_id: int) -> str:
     return "Reminder cancelled." if store.cancel_reminder(_uid(), int(reminder_id)) else "No active reminder with that ID."
 
 
-def generate_image(prompt: str) -> str:
+IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "auto")        # auto | openai | gemini | pollinations
+OPENAI_IMAGE_MODEL = os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1")
+GEMINI_IMAGE_MODEL = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+_SIZES = {"square": ("1024x1024", "1:1"), "landscape": ("1536x1024", "16:9"), "portrait": ("1024x1536", "9:16")}
+
+
+def _image_openai(prompt: str, aspect: str) -> bytes:
+    import base64
+    r = requests.post("https://api.openai.com/v1/images/generations", timeout=180,
+                      headers={"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}"},
+                      json={"model": OPENAI_IMAGE_MODEL, "prompt": prompt[:4000], "size": _SIZES[aspect][0], "quality": "high"})
+    if r.status_code != 200:
+        raise RuntimeError(f"OpenAI images {r.status_code}: {r.text[:200]}")
+    return base64.b64decode(r.json()["data"][0]["b64_json"])
+
+
+def _image_gemini(prompt: str, aspect: str) -> bytes:
+    import base64
+    r = requests.post(f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_IMAGE_MODEL}:generateContent",
+                      params={"key": os.getenv("GEMINI_API_KEY")}, timeout=180,
+                      json={"contents": [{"parts": [{"text": prompt[:4000]}]}],
+                            "generationConfig": {"responseModalities": ["IMAGE"], "imageConfig": {"aspectRatio": _SIZES[aspect][1]}}})
+    if r.status_code != 200:
+        raise RuntimeError(f"Gemini images {r.status_code}: {r.text[:200]}")
+    for part in ((r.json().get("candidates") or [{}])[0].get("content") or {}).get("parts") or []:
+        data = (part.get("inlineData") or part.get("inline_data") or {}).get("data")
+        if data:
+            return base64.b64decode(data)
+    raise RuntimeError("Gemini returned no image (it may have refused the prompt).")
+
+
+def _image_pollinations(prompt: str, aspect: str) -> bytes:
+    w, h = _SIZES[aspect][0].split("x")
+    r = requests.get(f"https://image.pollinations.ai/prompt/{quote(prompt[:800])}?width={w}&height={h}&nologo=true&model=flux", timeout=90)
+    if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
+        raise RuntimeError(f"Pollinations failed ({r.status_code})")
+    return r.content
+
+
+def generate_image(prompt: str, aspect: str = "square") -> str:
+    """Best available image model: OpenAI (gpt-image) if OPENAI_API_KEY is set, else Google Gemini image if
+    GEMINI_API_KEY is set, else the free Pollinations service (low quality; last resort)."""
     ctx = context.get()
     if not ctx.is_owner and not PUBLIC_IMAGE_GEN:
         return "Image generation is only available to the bot owner."
     if ctx.platform != "telegram":
         return "On this platform, ask with 'draw ...' or 'imagine ...' instead."
-    url = f"https://image.pollinations.ai/prompt/{quote(prompt[:800])}?width=1024&height=1024&nologo=true&model=flux"
-    try:
-        r = requests.get(url, timeout=90)
-    except requests.RequestException as e:
-        return f"Image service unreachable: {str(e)[:120]}"
-    if r.status_code != 200 or not r.headers.get("content-type", "").startswith("image"):
-        return f"Image service failed (status {r.status_code})."
-    fd, path = tempfile.mkstemp(suffix=".jpg", prefix="agentimg_")
+    aspect = aspect if aspect in _SIZES else "square"
+    order = {"openai": ["openai"], "gemini": ["gemini"], "pollinations": ["pollinations"]}.get(IMAGE_PROVIDER) or \
+        ([p for p, k in (("openai", "OPENAI_API_KEY"), ("gemini", "GEMINI_API_KEY")) if os.getenv(k)] + ["pollinations"])
+    errors, data, used = [], None, ""
+    for p in order:
+        try:
+            data = {"openai": _image_openai, "gemini": _image_gemini, "pollinations": _image_pollinations}[p](prompt, aspect)
+            used = p
+            break
+        except Exception as e:
+            errors.append(str(e)[:150])
+    if not data:
+        return "Image generation failed: " + " | ".join(errors)
+    fd, path = tempfile.mkstemp(suffix=".png", prefix="agentimg_")
     with os.fdopen(fd, "wb") as f:
-        f.write(r.content)
+        f.write(data)
     ctx.outbox.append({"kind": "photo", "path": path, "dir": None, "caption": prompt[:200]})
-    return "Image generated. It will be sent right after your reply; keep your reply to one short line."
+    weak = " (made with the free fallback: add OPENAI_API_KEY or GEMINI_API_KEY for much better images)" if used == "pollinations" else ""
+    return f"Image generated{weak}. It will be sent right after your reply; keep your reply to one short line."
 
 
 import ast
@@ -301,8 +349,10 @@ ALL_TOOLS = [
     _schema("calculate", "Math: + - * / // % ** (or ^), parentheses, abs, round, min, max, sum, pow, sqrt, log, log10, "
             "exp, ceil, floor, pi, e.", {"expression": S}, ["expression"]),
     _schema("get_datetime", "Current date and time in the user's timezone."),
-    _schema("generate_image", "Create an image from a text description and send it to the user (thumbnails, mockups, "
-            "concept art). Write a detailed visual prompt.", {"prompt": S}, ["prompt"]),
+    _schema("generate_image", "Create an image and send it to the user (thumbnails, posters, mockups, concept art, "
+            "social posts). Write a detailed visual prompt: subject, composition, style, lighting, colours, and any exact "
+            "text to render in quotes. aspect: square, landscape (16:9, thumbnails) or portrait (9:16, reels/stories).",
+            {"prompt": S, "aspect": {**S, "enum": ["square", "landscape", "portrait"]}}, ["prompt"]),
     _schema("compose_email", "Write an email for the user and give them buttons that open it, pre-filled, in their own "
             "Gmail or Outlook (they press send). Use whenever they want an email drafted, written or replied to. Write "
             "the complete, ready-to-send body in their voice.",
@@ -386,7 +436,7 @@ def execute_tool(name: str, inputs: dict) -> str:
         "delete_note": lambda: delete_note(inputs["note_id"]),
         "calculate": lambda: calculate(inputs["expression"]),
         "get_datetime": get_datetime,
-        "generate_image": lambda: generate_image(inputs["prompt"]),
+        "generate_image": lambda: generate_image(inputs["prompt"], inputs.get("aspect", "square")),
         "watch_keyword": lambda: watch_keyword(inputs["keyword"]),
         "list_watches": lambda: watch.list_text(_uid()),
         "unwatch_keyword": lambda: watch.remove(_uid(), inputs["keyword"]),

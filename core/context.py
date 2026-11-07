@@ -22,6 +22,8 @@ class Ctx:
     partial: str = ""        # the answer so far, while it streams
     stream: bool = False     # ask the model to stream its final answer into `partial`
     buttons: list = field(default_factory=list)  # (label, url) link buttons to show under the reply
+    evidence: list = field(default_factory=list)  # what search/read tools returned this turn (for the fact check)
+    force_search: object = None                  # True/False from core.reason.understand; None = use the keyword rule
 
 
 _current = contextvars.ContextVar("agent_ctx", default=None)

@@ -53,6 +53,30 @@ questions go to Haiku and strategy, writing and long messages to Sonnet 5.5.
 - `/thinking off|low|medium|high` sets how hard models think in your chats; `/think <q>` for one message.
 - `/style <...>` lets anyone set their own reply style.
 
+## How it thinks
+
+Every message from you goes through three steps:
+
+1. **Understand.** A fast pass reads the recent conversation and your message and works out what you mean (typos,
+   Hinglish, "that", "him"), whether it needs fresh facts, and whether it's hard enough for the deeper model with
+   thinking (`core/reason.py`).
+2. **Research and answer.** Anything about the world is searched first (Google plus Google News from the last 24
+   hours, with dates); the answer is written from those sources.
+3. **Fact check.** A second pass checks every claim against the sources fetched for that answer and today's date, and
+   removes or corrects anything unsupported. It never guesses what an acronym means.
+
+It also keeps working after the chat: "keep me posted on X" starts a background task that re-researches every few
+hours and messages only what's new (`core/tasks.py`), and once a day it tells you your loose ends from recent chats.
+Anything that sends, buys, deletes or changes something needs your yes; text inside web pages and emails is treated
+as data, never as instructions.
+
+## Evaluations
+
+`evals/cases.json` holds real questions the agent has to get right (searching for unknown acronyms, current events,
+no forced creator-economy angle, no search for chit-chat, confirming before adding calendar events...).
+`python scripts/eval.py` runs them against the live models in throwaway conversations and prints a pass rate.
+Run it before every update; add a case every time the agent gets something wrong.
+
 ## Data
 
 Everything is in `data/agent.db` (SQLite): users, learned profiles, facts, notes, reminders, conversations, usage.

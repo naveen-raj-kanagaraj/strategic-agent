@@ -321,6 +321,12 @@ ALL_TOOLS = [
             "start/end: ISO date-times in the user's timezone, e.g. 2026-11-06T15:00.",
             {"title": S, "start": S, "end": S, "location": S, "details": S, "confirmed": {"type": "boolean"}},
             ["title", "start"]),
+    _schema("start_task", "Keep working on something in the background and message the user only when there's news: "
+            "tracking a story, a launch, prices, a person or company, a search that takes days. Use when they say keep me "
+            "posted, track, follow, monitor, keep an eye on, let me know when.",
+            {"goal": S, "every_hours": {"type": "number"}, "days": {"type": "number"}}, ["goal"]),
+    _schema("list_tasks", "Background tasks currently running for the user."),
+    _schema("stop_task", "Stop a background task by its number.", {"task_id": S}, ["task_id"]),
     _schema("whatsapp_message", "Write a WhatsApp message and give a button that opens WhatsApp with it filled in "
             "(to a phone number with country code if given, otherwise they pick the chat).",
             {"text": S, "phone": S}, ["text"]),
@@ -328,7 +334,7 @@ ALL_TOOLS = [
 
 TALENT_TOOLS = {"save_creator", "find_creators", "save_deal", "pipeline", "scout_creator",
                 "get_brand_voice", "save_brand_voice"}
-OWNER_ONLY = TALENT_TOOLS | {"my_emails", "my_calendar", "add_to_calendar"} | ({"generate_image"} if not PUBLIC_IMAGE_GEN else set())
+OWNER_ONLY = TALENT_TOOLS | {"my_emails", "my_calendar", "add_to_calendar", "start_task", "list_tasks", "stop_task"} | ({"generate_image"} if not PUBLIC_IMAGE_GEN else set())
 
 
 def tools_for(is_owner: bool) -> list:
@@ -342,6 +348,10 @@ TOOLS = ALL_TOOLS
 def execute_tool(name: str, inputs: dict) -> str:
     handlers = {
         "web_search": lambda: web_search(inputs["query"]),
+        "start_task": lambda: __import__("core.tasks", fromlist=["x"]).start(
+            _uid(), context.get().chat_id, inputs["goal"], inputs.get("every_hours") or 6, inputs.get("days") or 7),
+        "list_tasks": lambda: __import__("core.tasks", fromlist=["x"]).list_text(_uid()),
+        "stop_task": lambda: __import__("core.tasks", fromlist=["x"]).stop(_uid(), inputs["task_id"]),
         "my_emails": lambda: _owner_only() or __import__("core.gsuite", fromlist=["x"]).email_text(
             inputs.get("query", ""), int(inputs.get("hours") or 24)),
         "my_calendar": lambda: _owner_only() or __import__("core.gsuite", fromlist=["x"]).events_text(

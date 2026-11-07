@@ -238,6 +238,24 @@ NEWS_RE = re.compile(r"\b(news|latest|newest|recent(ly)?|today|tonight|yesterday
                      r"results?|won|wins?|elections?|midterms?|polls?|prices?|stock|market|live)\b", re.I)
 
 
+# Messages that never need the web: chit-chat, reminders, notes, maths, writing from what I gave, my own data.
+NO_SEARCH_RE = re.compile(r"^\s*(hi|hey|hello|yo|thanks|thank you|ok|okay|cool|nice|good (morning|night)|gm|gn|bye)\b|"
+                          r"\b(remind me|reminder|my notes?|save (a )?note|note this|calculate|convert \d|rewrite|rephrase|"
+                          r"proofread|translate|summari[sz]e this|my (emails?|inbox|calendar|schedule)|schedule (a|an|my)|"
+                          r"remember that|forget|download|transcript)\b", re.I)
+
+
+def wants_search(text: str) -> bool:
+    """Search first unless the message clearly doesn't need the web. Facts, names, acronyms, news, 'keep me posted',
+    anything about the world: search. Answering from memory is what made answers stale."""
+    t = (text or "").strip()
+    if not t or re.search(r"https?://", t) or len(t) < 8:
+        return False
+    if NEWS_RE.search(t):
+        return True
+    return not NO_SEARCH_RE.search(t)
+
+
 def _last_user_text(messages) -> str:
     for m in reversed(messages):
         if m.get("role") != "user":
@@ -253,7 +271,7 @@ def _last_user_text(messages) -> str:
 
 def _run_anthropic(uid, model, system, tools, messages, level="off") -> str:
     # Asking for news or anything current: search first, every time (the model can't skip it and answer from memory)
-    force = any(t.get("name") == "web_search" for t in tools or []) and bool(NEWS_RE.search(_last_user_text(messages)))
+    force = any(t.get("name") == "web_search" for t in tools or []) and wants_search(_last_user_text(messages))
     for _ in range(MAX_TOOL_ROUNDS + 1):
         last_round = _ == MAX_TOOL_ROUNDS
         choice = {"type": "none"} if last_round else {"type": "auto"}
@@ -313,7 +331,7 @@ def _run_openai_compat(uid, provider, model, system, tools, history, level="off"
         last_round = _ == MAX_TOOL_ROUNDS
         kwargs = {"model": model, "messages": messages, limit_key: REPLY_MAX_TOKENS + (4000 if level != "off" else 0)}
         if not last_round:
-            first_news = _ == 0 and any(t.get("name") == "web_search" for t in tools or []) and bool(NEWS_RE.search(_last_user_text(history)))
+            first_news = _ == 0 and any(t.get("name") == "web_search" for t in tools or []) and wants_search(_last_user_text(history))
             kwargs.update(tools=otools, tool_choice={"type": "function", "function": {"name": "web_search"}} if first_news else "auto")
         if level != "off":
             kwargs["reasoning_effort"] = level

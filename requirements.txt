@@ -22,3 +22,4 @@ waitress==3.0.2
 edge-tts
 google-auth-oauthlib
 markdown
+pandas

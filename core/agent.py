@@ -253,7 +253,7 @@ def wants_search(text: str) -> bool:
     """Search first unless the message clearly doesn't need the web. Facts, names, acronyms, news, 'keep me posted',
     anything about the world: search. Answering from memory is what made answers stale."""
     t = (text or "").strip()
-    if not t or re.search(r"https?://", t) or len(t) < 8:
+    if not t or re.search(r"https?://", t) or len(t) < 8 or "File content:" in t:   # a file: analyse it, don't search
         return False
     if NEWS_RE.search(t):
         return True
@@ -273,7 +273,7 @@ def _last_user_text(messages) -> str:
     return ""
 
 
-def _run_anthropic(uid, model, system, tools, messages, level="off") -> str:
+def _run_anthropic(uid, model, system, tools, messages, level="off", _retry=False) -> str:
     # Asking for news or anything current: search first, every time (the model can't skip it and answer from memory)
     fs = context.get().force_search
     force = any(t.get("name") == "web_search" for t in tools or []) and (
@@ -316,9 +316,13 @@ def _run_anthropic(uid, model, system, tools, messages, level="off") -> str:
             messages.append({"role": "assistant", "content": response.content})
             messages.append({"role": "user", "content": tool_results})
             continue
-        return "\n".join(
-            block.text for block in response.content if getattr(block, "type", "") == "text"
-        ).strip() or "No response."
+        text = "\n".join(block.text for block in response.content if getattr(block, "type", "") == "text").strip()
+        if not text and not _retry:
+            # Empty answer (thinking used the whole budget, or the model stopped early): try once more, plainly
+            print(f"Empty answer (stop: {response.stop_reason}); retrying without thinking")
+            context.get().force_search = False
+            return _run_anthropic(uid, model, system, tools, messages, "off", _retry=True)
+        return text or "I couldn't put an answer together for that. Try asking again, maybe with more detail."
     return "I got stuck in a loop of tool calls. Try rephrasing."
 
 
@@ -452,9 +456,9 @@ def chat(user_id: str, platform: str, message: str, ctx: "context.Ctx" = None,
     if is_owner and not group:
         from core import reason
         now_txt = reason.now_text(store.user_tz(store.get_user(uid) or {}))
-        u = reason.understand(history[:-1], message, now_txt)
+        u = reason.understand(history[:-1], message.split("File content:")[0][:2000], now_txt)
         if u:
-            ctx.force_search = u["search"]
+            ctx.force_search = u["search"] and "File content:" not in message
             note = f"\n\n[What I mean: {u['intent']}]" if u.get("intent") else ""
             if u["search"] and u.get("queries"):
                 note += f"\n[Good searches: {'; '.join(u['queries'])}]"

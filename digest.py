@@ -427,6 +427,12 @@ def start_digest_scheduler():
     schedule.every().monday.at(talent.WEEKLY_TIME).do(talent.send_weekly, send_telegram)
     from core import backup
     schedule.every().day.at(os.getenv("BACKUP_TIME", "03:00")).do(backup.nightly)
+    def _update_ytdlp():      # X, Instagram and TikTok change often; an old yt-dlp is the usual reason downloads break
+        import subprocess, sys
+        r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-U", "yt-dlp"], capture_output=True, text=True, timeout=300)
+        print(f"yt-dlp update: {'ok' if r.returncode == 0 else r.stderr[-200:]}")
+    schedule.every().day.at("04:10").do(lambda: _pool.submit(_update_ytdlp))
+    _pool.submit(_update_ytdlp)
     from core import tasks as bg
     schedule.every(10).minutes.do(lambda: _pool.submit(bg.run_due, lambda t, cid: send_telegram(t, cid)))
     if bg.LOOSE_ENDS_TIME:

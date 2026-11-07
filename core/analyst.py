@@ -1,10 +1,10 @@
-"""Data analysis like a human analyst: the model writes Python, runs it on your file, reads the output, and iterates
-(clean, aggregate, test, model, chart), then explains what it found. Owner only.
+"""The agent's computer: the model writes Python, runs it in the owner's files folder, reads the output and iterates.
+Owner only.
 
-- Files you send (Excel, CSV, JSON, text) are kept in data/files/<user>/ so follow-up questions work on the same data.
-- run_python runs code in a separate process inside that folder, with pandas, numpy, scipy/statsmodels if installed and
-  matplotlib; a 90-second limit and no access to the agent's secrets (empty environment).
-- Every chart the code saves (or leaves open) is sent to you as an image.
+- Every file the owner sends (any type) is kept in data/files/<user>/ (last 15), so follow-ups work on the same files.
+- run_python runs code in a separate process inside that folder: pandas, numpy, matplotlib, python-docx, python-pptx,
+  openpyxl, PyMuPDF, Pillow; a 90-second limit and no access to the agent's secrets (empty environment).
+- Charts are sent as images; any file the code creates or changes in the folder is sent as a document.
 """
 import glob
 import os
@@ -82,6 +82,7 @@ def run_python(code: str) -> str:
     script = os.path.join(charts, "analysis.py")
     with open(script, "w") as f:
         f.write(PRELUDE + "\n" + code + "\n" + EPILOGUE)
+    before = {f: os.path.getmtime(f) for f in glob.glob(os.path.join(work, "*"))}
     env = {"PATH": os.environ.get("PATH", ""), "HOME": work, "CHART_DIR": charts, "MPLBACKEND": "Agg",
            "PYTHONIOENCODING": "utf-8"}
     try:
@@ -92,6 +93,15 @@ def run_python(code: str) -> str:
     pngs = sorted(glob.glob(os.path.join(charts, "*.png")))
     for p in pngs[:8]:
         c.outbox.append({"kind": "photo", "path": p})
-    note = f"\n[{len(pngs)} chart(s) will be sent to the user]" if pngs else ""
+    made = [f for f in glob.glob(os.path.join(work, "*"))
+            if os.path.isfile(f) and (f not in before or os.path.getmtime(f) > before[f])]
+    for f in made[:6]:     # files the code created or changed (Word, PowerPoint, Excel, PDF, CSV, images, zip...)
+        if os.path.getsize(f) > 45 * 1024 * 1024:
+            continue
+        tmp = os.path.join(tempfile.mkdtemp(prefix="out_"), os.path.basename(f))
+        shutil.copy(f, tmp)
+        c.outbox.append({"kind": "document", "path": tmp, "caption": os.path.basename(f)})
+    note = (f"\n[{len(pngs)} chart(s) will be sent to the user]" if pngs else "") + \
+           (f"\n[files sent to the user: {', '.join(os.path.basename(f) for f in made[:6])}]" if made else "")
     out = out.strip() or "(no output: print() the results you need to see)"
     return (out[:9000] + ("\n...(output cut)" if len(out) > 9000 else "")) + note

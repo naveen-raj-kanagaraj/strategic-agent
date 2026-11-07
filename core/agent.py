@@ -242,7 +242,8 @@ NEWS_RE = re.compile(r"\b(news|latest|newest|recent(ly)?|today|tonight|yesterday
 NO_SEARCH_RE = re.compile(r"^\s*(hi|hey|hello|yo|thanks|thank you|ok|okay|cool|nice|good (morning|night)|gm|gn|bye)\b|"
                           r"\b(remind me|reminder|my notes?|save (a )?note|note this|calculate|convert \d|rewrite|rephrase|"
                           r"proofread|translate|summari[sz]e this|my (emails?|inbox|calendar|schedule)|schedule (a|an|my)|"
-                          r"remember that|forget|download|transcript)\b", re.I)
+                          r"remember that|forget|download|transcript|plan my|my (day|week)|write (a|an|my) (email|message|caption|post|tweet|reply)|"
+                          r"draft (a|an|my))\b", re.I)
 
 
 def wants_search(text: str) -> bool:

@@ -1,15 +1,125 @@
 [
-  {"id": "acronym-search", "message": "keep me posted on CPT", "expect_tools": ["web_search"], "must_not_match": ["(?i)copyright treaty"]},
-  {"id": "keep-posted-starts-task", "message": "keep me posted on the US midterm results", "expect_tools": ["web_search", "start_task"]},
-  {"id": "midterms-current", "message": "what happened in the US midterms?", "expect_tools": ["web_search"], "must_not_match": ["(?i)next week", "(?i)will be held on november 3"]},
-  {"id": "news-search", "message": "latest news on india", "expect_tools": ["web_search"]},
-  {"id": "plain-fact-search", "message": "who is the CEO of Krafton India right now", "expect_tools": ["web_search"]},
-  {"id": "no-creator-angle", "message": "what's happening with oil prices this week", "expect_tools": ["web_search"], "must_not_match": ["(?i)creator economy", "(?i)your (brand|content|audience)", "(?i)want me to (turn|write).*tweet"]},
-  {"id": "no-tweet-upsell", "message": "explain the fed rate decision today", "must_not_match": ["(?i)want me to (turn|make|write) (it|this) into a (tweet|thread|post)"]},
-  {"id": "chitchat-no-search", "message": "thanks", "forbid_tools": ["web_search"]},
-  {"id": "reminder-no-search", "message": "remind me in 2 hours to call mom", "expect_tools": ["set_reminder"], "forbid_tools": ["web_search"]},
-  {"id": "math-no-search", "message": "calculate 18% of 4,250", "forbid_tools": ["web_search"], "must_match": ["765"]},
-  {"id": "rewrite-no-search", "message": "rewrite this to sound more confident: i think i might be a good fit for the role", "forbid_tools": ["web_search"]},
-  {"id": "typo-intent", "message": "whos winnng the ipl auctoin rn", "expect_tools": ["web_search"]},
-  {"id": "calendar-confirm-first", "message": "add a meeting with rahul tomorrow 3pm to my calendar", "must_match": ["(?i)(confirm|should i|shall i|ok to add|want me to add|yes)"], "must_not_match": ["(?i)added to your google calendar"]}
+ {
+  "id": "acronym-search",
+  "message": "keep me posted on CPT",
+  "expect_tools": [
+   "web_search"
+  ],
+  "must_not_match": [
+   "(?i)copyright treaty"
+  ]
+ },
+ {
+  "id": "keep-posted-starts-task",
+  "message": "keep me posted on the US midterm results",
+  "expect_tools": [
+   "web_search",
+   "start_task"
+  ]
+ },
+ {
+  "id": "midterms-current",
+  "message": "what happened in the US midterms?",
+  "expect_tools": [
+   "web_search"
+  ],
+  "must_not_match": [
+   "(?i)next week",
+   "(?i)will be held on november 3"
+  ]
+ },
+ {
+  "id": "news-search",
+  "message": "latest news on india",
+  "expect_tools": [
+   "web_search"
+  ]
+ },
+ {
+  "id": "plain-fact-search",
+  "message": "who is the CEO of Krafton India right now",
+  "expect_tools": [
+   "web_search"
+  ]
+ },
+ {
+  "id": "no-creator-angle",
+  "message": "what's happening with oil prices this week",
+  "expect_tools": [
+   "web_search"
+  ],
+  "must_not_match": [
+   "(?i)creator economy",
+   "(?i)your (brand|content|audience)",
+   "(?i)want me to (turn|write).*tweet"
+  ]
+ },
+ {
+  "id": "no-tweet-upsell",
+  "message": "explain the fed rate decision today",
+  "must_not_match": [
+   "(?i)want me to (turn|make|write) (it|this) into a (tweet|thread|post)"
+  ]
+ },
+ {
+  "id": "chitchat-no-search",
+  "message": "thanks",
+  "forbid_tools": [
+   "web_search"
+  ]
+ },
+ {
+  "id": "reminder-no-search",
+  "message": "remind me in 2 hours to call mom",
+  "expect_tools": [
+   "set_reminder"
+  ],
+  "forbid_tools": [
+   "web_search"
+  ]
+ },
+ {
+  "id": "math-no-search",
+  "message": "calculate 18% of 4,250",
+  "forbid_tools": [
+   "web_search"
+  ],
+  "must_match": [
+   "765"
+  ]
+ },
+ {
+  "id": "rewrite-no-search",
+  "message": "rewrite this to sound more confident: i think i might be a good fit for the role",
+  "forbid_tools": [
+   "web_search"
+  ]
+ },
+ {
+  "id": "typo-intent",
+  "message": "whos winnng the ipl auctoin rn",
+  "expect_tools": [
+   "web_search"
+  ]
+ },
+ {
+  "id": "calendar-confirm-first",
+  "message": "add a meeting with rahul tomorrow 3pm to my calendar",
+  "must_match": [
+   "(?i)(confirm|should i|shall i|ok to add|want me to add|yes)"
+  ],
+  "must_not_match": [
+   "(?i)added to your google calendar"
+  ]
+ },
+ {
+  "id": "file-analysis-runs-code",
+  "message": "I'm sending you a file called 'sales.csv' (saved for analysis as 'sales.csv'; use run_python to analyse it properly, with charts). analyze this\n\nFile content (profile):\n=== Sheet 'sales': 3 rows x 2 columns",
+  "expect_tools": [
+   "run_python"
+  ],
+  "forbid_tools": [
+   "web_search"
+  ]
+ }
 ]

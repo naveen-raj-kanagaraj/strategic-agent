@@ -1185,6 +1185,36 @@ def extract_txt(path: str) -> str:
 
 
 def extract_excel(path: str) -> str:
+    """A data profile the model can actually analyse: every sheet's size, columns with type, totals, averages,
+    ranges, top categories, plus sample rows (not just the first 8,000 characters of raw cells)."""
+    try:
+        import pandas as pd
+        out = []
+        for name, df in pd.read_excel(path, sheet_name=None).items():
+            df = df.dropna(how="all").dropna(axis=1, how="all")
+            out.append(f"=== Sheet '{name}': {len(df):,} rows x {len(df.columns)} columns")
+            for col in df.columns[:40]:
+                s = df[col]
+                if pd.api.types.is_numeric_dtype(s):
+                    out.append(f"- {col} (number): sum {s.sum():,.2f}, mean {s.mean():,.2f}, median {s.median():,.2f}, "
+                               f"min {s.min():,.2f}, max {s.max():,.2f}, missing {s.isna().sum()}")
+                elif pd.api.types.is_datetime64_any_dtype(s):
+                    out.append(f"- {col} (date): {s.min()} to {s.max()}, missing {s.isna().sum()}")
+                else:
+                    top = s.astype(str).value_counts().head(8)
+                    out.append(f"- {col} (text, {s.nunique():,} distinct): top " + ", ".join(f"{k} ({v})" for k, v in top.items()))
+            nums = df.select_dtypes("number")
+            cats = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])
+                    and not pd.api.types.is_datetime64_any_dtype(df[c]) and 1 < df[c].nunique() <= 30]
+            if len(nums.columns) and cats:      # the totals by the main category: what most analyses start from
+                g = df.groupby(cats[0])[list(nums.columns[:4])].sum().sort_values(nums.columns[0], ascending=False).head(15)
+                out.append(f"Totals by {cats[0]}:\n{g.to_string()}")
+            if len(nums.columns) > 1:
+                out.append("Correlations:\n" + nums.iloc[:, :8].corr().round(2).to_string())
+            out.append("First rows:\n" + df.head(12).to_string(max_colwidth=30))
+        return "\n".join(out)[:20000]
+    except Exception as e:
+        print(f"pandas profile failed, falling back to raw cells: {e}")
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     text = ""
     for ws in wb.worksheets:

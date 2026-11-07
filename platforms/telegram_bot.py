@@ -1424,6 +1424,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         ask = (update.message.caption or "").strip() or \
             "Read it and summarise the key points, insights, and anything important."
+        if user["uid"] == "owner" and ext in (".xlsx", ".csv", ".json", ".txt"):   # keep it for real analysis with code
+            from core import analyst
+            kept = analyst.keep_file(user["uid"], path, name)
+            await run_chat(update, context,
+                           f"I'm sending you a file called '{name}' (saved for analysis as '{kept}'; use run_python to "
+                           f"analyse it properly, with charts). {ask}\n\nFile content (profile):\n{text}")
+            return
         await run_chat(update, context, f"I'm sending you a file called '{name}'. {ask}\n\nFile content:\n{text}")
     finally:
         os.unlink(path)

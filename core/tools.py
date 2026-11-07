@@ -321,6 +321,12 @@ ALL_TOOLS = [
             "start/end: ISO date-times in the user's timezone, e.g. 2026-11-06T15:00.",
             {"title": S, "start": S, "end": S, "location": S, "details": S, "confirmed": {"type": "boolean"}},
             ["title", "start"]),
+    _schema("run_python", "Analyse data like an analyst: run Python on the user's files (they are in the current folder; "
+            "list them with analysis_files). pandas as pd, numpy as np, matplotlib.pyplot as plt are already imported. "
+            "print() what you need to see; every chart is sent to the user (call show('Title') after plotting). Work step "
+            "by step: load and inspect (shape, dtypes, head, missing), clean, then answer with aggregations, comparisons, "
+            "trends, statistics and charts. Check numbers before stating them.", {"code": S}, ["code"]),
+    _schema("analysis_files", "Files the user has sent that are available to run_python."),
     _schema("create_pdf", "Make a PDF document and send it: reports, research write-ups, plans, itineraries, comparisons, "
             "study notes, anything the user will keep, print or share, or that is too long for chat. content is "
             "Markdown (headings, lists, tables).", {"title": S, "content": S}, ["title", "content"]),
@@ -337,7 +343,7 @@ ALL_TOOLS = [
 
 TALENT_TOOLS = {"save_creator", "find_creators", "save_deal", "pipeline", "scout_creator",
                 "get_brand_voice", "save_brand_voice"}
-OWNER_ONLY = TALENT_TOOLS | {"my_emails", "my_calendar", "add_to_calendar", "start_task", "list_tasks", "stop_task"} | ({"generate_image"} if not PUBLIC_IMAGE_GEN else set())
+OWNER_ONLY = TALENT_TOOLS | {"my_emails", "my_calendar", "add_to_calendar", "start_task", "list_tasks", "stop_task", "run_python", "analysis_files"} | ({"generate_image"} if not PUBLIC_IMAGE_GEN else set())
 
 
 def tools_for(is_owner: bool) -> list:
@@ -351,6 +357,8 @@ TOOLS = ALL_TOOLS
 def execute_tool(name: str, inputs: dict) -> str:
     handlers = {
         "web_search": lambda: web_search(inputs["query"]),
+        "run_python": lambda: __import__("core.analyst", fromlist=["x"]).run_python(inputs["code"]),
+        "analysis_files": lambda: __import__("core.analyst", fromlist=["x"]).list_files(_uid()),
         "create_pdf": lambda: __import__("core.docs", fromlist=["x"]).tool_create_pdf(inputs["title"], inputs["content"]),
         "start_task": lambda: __import__("core.tasks", fromlist=["x"]).start(
             _uid(), context.get().chat_id, inputs["goal"], inputs.get("every_hours") or 6, inputs.get("days") or 7),

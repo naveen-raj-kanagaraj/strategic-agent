@@ -321,11 +321,13 @@ ALL_TOOLS = [
             "start/end: ISO date-times in the user's timezone, e.g. 2026-11-06T15:00.",
             {"title": S, "start": S, "end": S, "location": S, "details": S, "confirmed": {"type": "boolean"}},
             ["title", "start"]),
-    _schema("run_python", "Analyse data like an analyst: run Python on the user's files (they are in the current folder; "
-            "list them with analysis_files). pandas as pd, numpy as np, matplotlib.pyplot as plt are already imported. "
-            "print() what you need to see; every chart is sent to the user (call show('Title') after plotting). Work step "
-            "by step: load and inspect (shape, dtypes, head, missing), clean, then answer with aggregations, comparisons, "
-            "trends, statistics and charts. Check numbers before stating them.", {"code": S}, ["code"]),
+    _schema("run_python", "Your computer: run Python in the user's files folder (everything they sent is there; list it "
+            "with analysis_files). Use it to read, analyse, convert, edit or create ANY file: data analysis with charts "
+            "(pandas as pd, numpy as np, matplotlib.pyplot as plt are imported; call show('Title') after plotting), "
+            "Word (python-docx), PowerPoint (python-pptx), Excel (openpyxl, with formatting/formulas), PDF (fitz = "
+            "PyMuPDF: read, merge, split, extract, create), images (PIL), CSV/JSON, zip. Any file you save in the "
+            "current folder is sent to the user automatically. print() what you need to see; work step by step and "
+            "check the output before answering.", {"code": S}, ["code"]),
     _schema("analysis_files", "Files the user has sent that are available to run_python."),
     _schema("create_pdf", "Make a PDF document and send it: reports, research write-ups, plans, itineraries, comparisons, "
             "study notes, anything the user will keep, print or share, or that is too long for chat. content is "

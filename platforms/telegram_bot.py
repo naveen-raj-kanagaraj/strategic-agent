@@ -1388,6 +1388,30 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.unlink(path)
 
 
+async def owner_file(update, context, user, doc, name, ext, caption):
+    """Keep any file the owner sends in their files folder, give the model a preview, and let it work with run_python."""
+    from core import analyst
+    f = await context.bot.get_file(doc.file_id)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        await f.download_to_drive(tmp.name)
+        path = tmp.name
+    try:
+        kept = analyst.keep_file(user["uid"], path, name)
+        preview = ""
+        if ext in EXTRACTORS:
+            try:
+                preview = await asyncio.to_thread(EXTRACTORS[ext], path)
+            except Exception as e:
+                preview = f"(couldn't preview: {str(e)[:100]})"
+    finally:
+        os.unlink(path)
+    ask = caption or "Look at it and tell me what it is and what matters in it."
+    await run_chat(update, context,
+                   f"I'm sending you a file called '{name}', saved in my files folder as '{kept}'. Use run_python to work "
+                   f"with it (read, analyse, edit, convert, or create new files from it) whenever the preview isn't "
+                   f"enough. {ask}\n\nFile content (preview):\n{preview or '(no preview for this type; open it with run_python)'}")
+
+
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = (update.message.caption or "").strip()
     user = await gate(update, count=bool(caption))
@@ -1400,6 +1424,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("That file is over 20 MB, which is Telegram's limit for bots.")
         return
     is_image = ext in (".jpg", ".jpeg", ".png", ".gif", ".webp")
+    if user["uid"] == "owner" and not is_image:   # the owner: any file, no buttons, straight to work
+        await owner_file(update, context, user, doc, name, ext, caption)
+        return
     if not is_image and ext not in EXTRACTORS:
         await update.message.reply_text(
             "I can read PDF, Word (.docx), PowerPoint (.pptx), Excel (.xlsx), CSV, TXT and images. "

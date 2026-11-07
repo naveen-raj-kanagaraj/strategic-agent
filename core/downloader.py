@@ -11,6 +11,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import requests
 import yt_dlp
 
 # Telegram's standard bot API rejects uploads over 50 MB.
@@ -130,6 +131,48 @@ def probe_video(path: str) -> tuple:
         return 0, 0, 0
 
 
+def _x_fallback(url: str, out_dir: str):
+    """X/Twitter often breaks yt-dlp (guest tokens, login walls). FxTwitter's free public API returns the post's direct
+    MP4 links; download the best one that fits. Returns (path, info) or None."""
+    m = re.search(r"(?:twitter\.com|x\.com)/(?:[^/]+|i)/status(?:es)?/(\d+)", url)
+    if not m:
+        return None
+    try:
+        j = requests.get(f"https://api.fxtwitter.com/status/{m.group(1)}", timeout=20,
+                         headers={"User-Agent": "Mozilla/5.0"}).json()
+    except Exception:
+        return None
+    t = j.get("tweet") or {}
+    vids = ((t.get("media") or {}).get("videos") or []) + [x for x in (t.get("media") or {}).get("all") or []
+                                                            if x.get("type") in ("video", "gif")]
+    links = []
+    for v in vids:
+        for f in sorted(v.get("formats") or [], key=lambda f: -(f.get("bitrate") or 0)):
+            if f.get("container") == "mp4" or str(f.get("url", "")).split("?")[0].endswith(".mp4"):
+                links.append(f["url"])
+        if v.get("url"):
+            links.append(v["url"])
+    for link in dict.fromkeys(links):
+        path = os.path.join(out_dir, f"{m.group(1)}.mp4")
+        try:
+            with requests.get(link, stream=True, timeout=60) as r:
+                if r.status_code != 200:
+                    continue
+                size = 0
+                with open(path, "wb") as f:
+                    for chunk in r.iter_content(1 << 16):
+                        size += len(chunk)
+                        if size > MAX_FILE_SIZE:
+                            break
+                        f.write(chunk)
+            if 0 < size <= MAX_FILE_SIZE:
+                return path, {"title": (t.get("text") or "")[:200], "description": t.get("text") or "",
+                              "uploader": (t.get("author") or {}).get("name", ""), "duration": 0}
+        except Exception:
+            continue
+    return None
+
+
 def download_video(url: str) -> dict:
     """Blocking download. Returns {path, dir, title, duration, width, height, size_mb}.
     Caller must delete result['dir'] when done."""
@@ -161,16 +204,20 @@ def download_video(url: str) -> dict:
                 info = info["entries"][0]
             path = Path(ydl.prepare_filename(info))
     except yt_dlp.utils.DownloadError as e:
-        shutil.rmtree(out_dir, ignore_errors=True)
-        msg = str(e).lower()
-        if "login" in msg or "rate" in msg:
-            raise DownloadFailed(
-                "The site blocked this download (login or rate limit). "
-                "Adding a cookies.txt file to the my-agent folder usually fixes Instagram."
-            )
-        if "no video" in msg:
-            raise DownloadFailed("No video found in that post.")
-        raise DownloadFailed(f"Download failed: {str(e)[:250]}")
+        fb = _x_fallback(url, out_dir) if re.search(r"(twitter|x)\.com/", url) else None
+        if fb:
+            path, info = Path(fb[0]), fb[1]
+        else:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            msg = str(e).lower()
+            if "login" in msg or "rate" in msg:
+                raise DownloadFailed(
+                    "The site blocked this download (login or rate limit). "
+                    "Adding a cookies.txt file to the my-agent folder usually fixes Instagram."
+                )
+            if "no video" in msg:
+                raise DownloadFailed("No video found in that post.")
+            raise DownloadFailed(f"Download failed: {str(e)[:250]}")
 
     if not path.exists():
         files = [p for p in Path(out_dir).iterdir() if p.is_file()]

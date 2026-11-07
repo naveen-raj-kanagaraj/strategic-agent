@@ -321,6 +321,9 @@ ALL_TOOLS = [
             "start/end: ISO date-times in the user's timezone, e.g. 2026-11-06T15:00.",
             {"title": S, "start": S, "end": S, "location": S, "details": S, "confirmed": {"type": "boolean"}},
             ["title", "start"]),
+    _schema("create_pdf", "Make a PDF document and send it: reports, research write-ups, plans, itineraries, comparisons, "
+            "study notes, anything the user will keep, print or share, or that is too long for chat. content is "
+            "Markdown (headings, lists, tables).", {"title": S, "content": S}, ["title", "content"]),
     _schema("start_task", "Keep working on something in the background and message the user only when there's news: "
             "tracking a story, a launch, prices, a person or company, a search that takes days. Use when they say keep me "
             "posted, track, follow, monitor, keep an eye on, let me know when.",
@@ -348,6 +351,7 @@ TOOLS = ALL_TOOLS
 def execute_tool(name: str, inputs: dict) -> str:
     handlers = {
         "web_search": lambda: web_search(inputs["query"]),
+        "create_pdf": lambda: __import__("core.docs", fromlist=["x"]).tool_create_pdf(inputs["title"], inputs["content"]),
         "start_task": lambda: __import__("core.tasks", fromlist=["x"]).start(
             _uid(), context.get().chat_id, inputs["goal"], inputs.get("every_hours") or 6, inputs.get("days") or 7),
         "list_tasks": lambda: __import__("core.tasks", fromlist=["x"]).list_text(_uid()),

@@ -489,6 +489,9 @@ def chat(user_id: str, platform: str, message: str, ctx: "context.Ctx" = None,
         if now_txt and ctx.evidence:   # check every claim against what was fetched, fix anything unsupported
             from core import reason
             final_text = reason.verify(message, final_text, ctx.evidence, now_txt)
+        if is_owner and not group:   # long answers become a PDF; the chat gets the short version
+            from core import docs
+            final_text = docs.auto_pdf(message, final_text, ctx)
         if is_owner:
             final_text = strip_markdown(final_text)  # your prompt asks for plain text
         ctx.rich = not is_owner  # everyone else gets formatted replies (bold, lists, code, links)

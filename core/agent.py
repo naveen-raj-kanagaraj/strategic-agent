@@ -180,7 +180,10 @@ def _exec_tool(name: str, args: dict) -> str:
     c.progress = tool_label(name, args)
     store.log_activity(c.uid, c.platform, f"tool:{name}", _summarise_args(args or {}), c.model_label)
     try:
-        return safety.wrap(name, execute_tool(name, args))
+        out = safety.wrap(name, execute_tool(name, args))
+        if name in ("web_search", "read_url", "scan_sources", "my_emails", "my_calendar"):
+            c.evidence.append(f"[{name}] {out}")
+        return out
     except Exception as e:
         return f"Tool error: {str(e)[:200]}"
 
@@ -272,7 +275,9 @@ def _last_user_text(messages) -> str:
 
 def _run_anthropic(uid, model, system, tools, messages, level="off") -> str:
     # Asking for news or anything current: search first, every time (the model can't skip it and answer from memory)
-    force = any(t.get("name") == "web_search" for t in tools or []) and wants_search(_last_user_text(messages))
+    fs = context.get().force_search
+    force = any(t.get("name") == "web_search" for t in tools or []) and (
+        fs if fs is not None else wants_search(_last_user_text(messages)))
     for _ in range(MAX_TOOL_ROUNDS + 1):
         last_round = _ == MAX_TOOL_ROUNDS
         choice = {"type": "none"} if last_round else {"type": "auto"}
@@ -332,7 +337,9 @@ def _run_openai_compat(uid, provider, model, system, tools, history, level="off"
         last_round = _ == MAX_TOOL_ROUNDS
         kwargs = {"model": model, "messages": messages, limit_key: REPLY_MAX_TOKENS + (4000 if level != "off" else 0)}
         if not last_round:
-            first_news = _ == 0 and any(t.get("name") == "web_search" for t in tools or []) and wants_search(_last_user_text(history))
+            fs = context.get().force_search
+            first_news = _ == 0 and any(t.get("name") == "web_search" for t in tools or []) and (
+                fs if fs is not None else wants_search(_last_user_text(history)))
             kwargs.update(tools=otools, tool_choice={"type": "function", "function": {"name": "web_search"}} if first_news else "auto")
         if level != "off":
             kwargs["reasoning_effort"] = level
@@ -439,6 +446,25 @@ def chat(user_id: str, platform: str, message: str, ctx: "context.Ctx" = None,
     system = build_system(uid, is_owner, platform, group, speaker)
     tools = tools_for(is_owner)
 
+    # Think before answering (owner, one to one): what do I actually mean, does it need fresh facts, is it hard?
+    turn = history
+    now_txt = ""
+    if is_owner and not group:
+        from core import reason
+        now_txt = reason.now_text(store.user_tz(store.get_user(uid) or {}))
+        u = reason.understand(history[:-1], message, now_txt)
+        if u:
+            ctx.force_search = u["search"]
+            note = f"\n\n[What I mean: {u['intent']}]" if u.get("intent") else ""
+            if u["search"] and u.get("queries"):
+                note += f"\n[Good searches: {'; '.join(u['queries'])}]"
+            turn = history[:-1] + [{"role": "user", "content": message + note}]
+            if u["deep"] and not chosen and model == FAST_MODEL:
+                model = SMART_MODEL
+                ctx.model_label = (models.registry().get(models.key_for_id(model)) or {}).get("label", model)
+            if u["deep"] and level == "off":
+                level = "low"
+
     fallback = _fallback_model() if provider == "anthropic" and _claude_out() else None
     if fallback:  # Claude credits ran out recently: go straight to the backup model
         model, provider = fallback["id"], fallback["provider"]
@@ -446,9 +472,9 @@ def chat(user_id: str, platform: str, message: str, ctx: "context.Ctx" = None,
     try:
         try:
             if provider == "anthropic":
-                final_text = _run_anthropic(uid, model, system, tools, history.copy(), level)
+                final_text = _run_anthropic(uid, model, system, tools, list(turn), level)
             else:
-                final_text = _run_openai_compat(uid, provider, model, system, tools, history, level)
+                final_text = _run_openai_compat(uid, provider, model, system, tools, list(turn), level)
         except anthropic.APIError as e:
             backup = _fallback_model()
             if not (_is_credit_error(e) and backup):
@@ -459,7 +485,10 @@ def chat(user_id: str, platform: str, message: str, ctx: "context.Ctx" = None,
                           f"{backup['label']} until you top up at console.anthropic.com > Billing.", 120)
             model, provider = backup["id"], backup["provider"]
             ctx.model_label = backup["label"]
-            final_text = _run_openai_compat(uid, provider, model, system, tools, history, level)
+            final_text = _run_openai_compat(uid, provider, model, system, tools, list(turn), level)
+        if now_txt and ctx.evidence:   # check every claim against what was fetched, fix anything unsupported
+            from core import reason
+            final_text = reason.verify(message, final_text, ctx.evidence, now_txt)
         if is_owner:
             final_text = strip_markdown(final_text)  # your prompt asks for plain text
         ctx.rich = not is_owner  # everyone else gets formatted replies (bold, lists, code, links)

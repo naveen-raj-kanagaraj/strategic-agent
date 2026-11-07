@@ -427,6 +427,10 @@ def start_digest_scheduler():
     schedule.every().monday.at(talent.WEEKLY_TIME).do(talent.send_weekly, send_telegram)
     from core import backup
     schedule.every().day.at(os.getenv("BACKUP_TIME", "03:00")).do(backup.nightly)
+    from core import tasks as bg
+    schedule.every(10).minutes.do(lambda: _pool.submit(bg.run_due, lambda t, cid: send_telegram(t, cid)))
+    if bg.LOOSE_ENDS_TIME:
+        schedule.every().day.at(bg.LOOSE_ENDS_TIME).do(lambda: _pool.submit(bg.loose_ends, lambda t, cid=None: send_telegram(t)))
     from core import speak, trends
     if trends.TREND_EVERY_MIN > 0:
         schedule.every(trends.TREND_EVERY_MIN).minutes.do(lambda: _pool.submit(

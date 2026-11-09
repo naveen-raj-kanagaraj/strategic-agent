@@ -151,6 +151,29 @@ def google_news(query: str, region: str = "us") -> list:
     return _cached(("gnews", query, region), fetch)
 
 
+def google_headlines(section: str = "", region: str = "us") -> list:
+    """Google News front page ('' = top stories) or a section: WORLD, BUSINESS, TECHNOLOGY, NATION. These are the
+    stories Google's editors and algorithms rank as biggest right now: what topic searches miss."""
+    hl, gl, ceid = GN_LOCALE.get(region, GN_LOCALE["us"])
+
+    def fetch():
+        path = f"headlines/section/topic/{section}" if section else ""
+        r = requests.get(f"https://news.google.com/rss/{path}?hl={hl}&gl={gl}&ceid={ceid}",
+                         headers={"User-Agent": UA}, timeout=15)
+        r.raise_for_status()
+        out = []
+        for it in ET.fromstring(r.content).iter("item"):
+            title = it.findtext("title") or ""
+            src = it.find("source")
+            source = src.text if src is not None else ""
+            if source and title.endswith(" - " + source):
+                title = title[: -len(source) - 3]
+            out.append(_item(title, it.findtext("link"), source, "News", _parse_date(it.findtext("pubDate")),
+                             it.findtext("description") or ""))
+        return out[:30]
+    return _cached(("gheadlines", section, region), fetch)
+
+
 def _reddit_oauth():
     cid, secret = os.getenv("REDDIT_CLIENT_ID"), os.getenv("REDDIT_CLIENT_SECRET")
     if not (cid and secret):

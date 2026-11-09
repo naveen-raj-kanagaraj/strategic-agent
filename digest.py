@@ -144,7 +144,8 @@ OWNER_FEEDS = {
     "Markets": ["stock market", "Sensex Nifty", "Wall Street"],
     "Crypto": ["bitcoin", "crypto market"],
     "Creators and marketing": ["creator economy", "influencer marketing", "YouTube creators"],
-    "Tech and AI": ["artificial intelligence", "OpenAI Anthropic Google AI"],
+    "Tech and AI": ["artificial intelligence", "OpenAI Anthropic Google AI", "Nvidia Jensen Huang",
+                    "Apple Microsoft Google Meta Amazon Tesla"],
     "Economy": ["inflation interest rates", "RBI Federal Reserve"],
 }
 LATEST_QUIET = (23, 7)          # no hourly updates 11 PM - 7 AM (owner's time); they roll into the morning
@@ -174,6 +175,13 @@ def owner_items(max_age_hours: float, include_channels: bool = True) -> list:
             items += sources.google_news(q, region)
         if cat == "Tech and AI":
             items += sources.hacker_news("AI")
+            items += sources.google_headlines("TECHNOLOGY", "us")
+        if cat == "World":            # the biggest stories right now, whatever the topic
+            items += sources.google_headlines("", "us") + sources.google_headlines("WORLD", "us")
+        if cat == "India":
+            items += sources.google_headlines("", "in")
+        if cat == "Markets":
+            items += sources.google_headlines("BUSINESS", "us") + sources.google_headlines("BUSINESS", "in")
         for it in items:
             if it.get("published") and (now - it["published"]).total_seconds() <= max_age_hours * 3600:
                 out.append((cat, it))

@@ -76,8 +76,11 @@ def run(send_text, send_voice):
     """Scheduler job: alert new trends to the owner (text + voice note). Quiet at night."""
     from datetime import datetime
     hour = datetime.now(store.user_tz({"timezone": store.OWNER_TZ})).hour
-    if hour >= 23 or hour < 7:
-        return
+    q = os.getenv("OWNER_QUIET", "").strip()
+    if re.fullmatch(r"\d{1,2}-\d{1,2}", q):
+        a, b = (int(x) for x in q.split("-"))
+        if hour >= a or hour < b:
+            return
     trends = find()
     if not trends:
         return

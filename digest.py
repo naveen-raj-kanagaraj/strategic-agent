@@ -148,7 +148,9 @@ OWNER_FEEDS = {
                     "Apple Microsoft Google Meta Amazon Tesla"],
     "Economy": ["inflation interest rates", "RBI Federal Reserve"],
 }
-LATEST_QUIET = (23, 7)          # no hourly updates 11 PM - 7 AM (owner's time); they roll into the morning
+# Owner updates run around the clock by default; set OWNER_QUIET=23-7 to pause them at night (owner's time)
+_q = os.getenv("OWNER_QUIET", "").strip()
+LATEST_QUIET = tuple(int(x) for x in _q.split("-")) if re.fullmatch(r"\d{1,2}-\d{1,2}", _q) else None
 LATEST_MAX_ITEMS = 12
 
 
@@ -313,7 +315,7 @@ Current time: {now}"""
 def check_and_send_breaking():
     """Hourly 'latest' update for the owner: new stories only, newest first, quiet at night."""
     hour = datetime.now(store.user_tz({"timezone": store.OWNER_TZ})).hour
-    if hour >= LATEST_QUIET[0] or hour < LATEST_QUIET[1]:
+    if LATEST_QUIET and (hour >= LATEST_QUIET[0] or hour < LATEST_QUIET[1]):
         return
     text = build_latest()
     if text:
@@ -445,7 +447,10 @@ def start_digest_scheduler():
     schedule.every(10).minutes.do(lambda: _pool.submit(bg.run_due, lambda t, cid: send_telegram(t, cid)))
     if bg.LOOSE_ENDS_TIME:
         schedule.every().day.at(bg.LOOSE_ENDS_TIME).do(lambda: _pool.submit(bg.loose_ends, lambda t, cid=None: send_telegram(t)))
-    from core import speak, trends
+    from core import speak, trends, outlets
+    if outlets.EVERY_MIN > 0:   # major newsrooms every few minutes: breaking stories with a voice note
+        schedule.every(outlets.EVERY_MIN).minutes.do(lambda: _pool.submit(
+            outlets.run, lambda t: send_telegram(t), lambda t: speak.send_voice(t, OWNER_TELEGRAM_ID)))
     if trends.TREND_EVERY_MIN > 0:
         schedule.every(trends.TREND_EVERY_MIN).minutes.do(lambda: _pool.submit(
             trends.run, lambda t: send_telegram(t), lambda t: speak.send_voice(t, OWNER_TELEGRAM_ID)))

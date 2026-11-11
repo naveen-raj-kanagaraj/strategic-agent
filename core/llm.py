@@ -70,12 +70,14 @@ def check_budget(uid: str):
         return
     est = store.credit_estimate()
     if est is not None:
+        how = (f"This is my estimate, not Anthropic's figure: the ${est['entered']:.2f} you gave me with /credits on "
+               f"{est['set_at'][:10]}, minus ${est['entered'] - est['left']:.2f} I've used since. If you've topped up, "
+               "send /credits <balance shown at console.anthropic.com > Billing> and this resets.")
         if est["left"] < LOW_BALANCE_ALERT:
-            alerts.notify("low_balance", f"Anthropic balance is about ${est['left']:.2f}. Top up at console.anthropic.com "
-                          "> Billing, then send /credits <new balance>.", 720)
+            alerts.notify("low_balance", f"Anthropic balance is about ${est['left']:.2f}. {how}", 720)
         if est["left"] < CREDIT_RESERVE:
-            alerts.notify("reserve", f"Balance is under ${CREDIT_RESERVE:.2f}, so other users are paused and the rest "
-                          "is kept for you. Top up, then send /credits <new balance>.", 360)
+            alerts.notify("reserve", f"Estimated balance is under ${CREDIT_RESERVE:.2f}, so I've paused replies to "
+                          f"other people (you're not affected) to save what's left for you. {how}", 360)
             raise BudgetExceeded("reserve")
     if PER_USER_DAILY and store.spend_today_user(uid) >= PER_USER_DAILY:
         raise BudgetExceeded("user")

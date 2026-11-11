@@ -934,7 +934,9 @@ async def cmd_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     est = store.credit_estimate()
     await update.message.reply_text(
-        f"Estimated Anthropic credits left: ${est['left']:.2f} (from ${est['entered']:.2f} entered)." if est else
+        f"Estimated Anthropic credits left: ${est['left']:.2f} (${est['entered']:.2f} entered on {est['set_at'][:10]}, "
+        f"${est['entered'] - est['left']:.2f} used since). Anthropic doesn't let me read your real balance, so after "
+        "a top-up send /credits <new balance>." if est else
         "Tell me your balance first: /credits 6.54 (from console.anthropic.com > Billing).")
 
 

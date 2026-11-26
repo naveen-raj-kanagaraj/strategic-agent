@@ -395,7 +395,7 @@ ALL_TOOLS = [
 
 TALENT_TOOLS = {"save_creator", "find_creators", "save_deal", "pipeline", "scout_creator",
                 "get_brand_voice", "save_brand_voice"}
-OWNER_ONLY = TALENT_TOOLS | {"my_emails", "my_calendar", "add_to_calendar", "start_task", "list_tasks", "stop_task", "run_python", "analysis_files"} | ({"generate_image"} if not PUBLIC_IMAGE_GEN else set())
+OWNER_ONLY = TALENT_TOOLS | {"my_emails", "my_calendar", "add_to_calendar", "start_task", "list_tasks", "stop_task", "run_python", "analysis_files", "download_video"} | ({"generate_image"} if not PUBLIC_IMAGE_GEN else set())
 
 
 def tools_for(is_owner: bool) -> list:

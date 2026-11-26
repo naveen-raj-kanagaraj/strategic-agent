@@ -5,6 +5,7 @@ Two ways in:
   2. Agent tool: Claude calls the download_video tool; the file is queued in OUTBOX and the
      Telegram handler sends it after the reply.
 """
+import copy
 import os
 import re
 import shutil
@@ -17,6 +18,14 @@ import yt_dlp
 # Telegram's standard bot API rejects uploads over 50 MB.
 MAX_MB = int(os.getenv("VIDEO_MAX_MB", "50"))
 MAX_FILE_SIZE = MAX_MB * 1024 * 1024
+# Highest resolution to aim for, measured on the short side (1080 = 1080p, also for vertical 1080x1920 reels).
+MAX_RES = int(os.getenv("VIDEO_MAX_RES", "1080"))
+# ffmpeg joins separate video and audio streams. YouTube (and often Instagram) only offer HD that way;
+# without ffmpeg the best single file with sound is usually 360p. Install with: brew install ffmpeg
+FFMPEG = shutil.which("ffmpeg")
+# Old selector, kept as the last resort: the best single file that already has sound.
+LEGACY_FORMAT = (f"best[ext=mp4][filesize<{MAX_MB - 2}M]/best[filesize<{MAX_MB - 2}M]/"
+                 f"best[filesize_approx<{MAX_MB - 2}M]/best")
 
 # Optional: cookies.txt exported from a logged-in browser fixes most Instagram blocks.
 COOKIES_FILE = Path(__file__).resolve().parent.parent / "cookies.txt"
@@ -173,36 +182,174 @@ def _x_fallback(url: str, out_dir: str):
     return None
 
 
-def download_video(url: str) -> dict:
-    """Blocking download. Returns {path, dir, title, duration, width, height, size_mb}.
-    Caller must delete result['dir'] when done."""
-    out_dir = tempfile.mkdtemp(prefix="agentvid_")
-    limit = f"{MAX_MB - 2}M"
+def _size(f: dict, duration: float):
+    """Bytes for one format: exact, approximate, or bitrate x duration. None if unknown."""
+    s = f.get("filesize") or f.get("filesize_approx")
+    if s:
+        return float(s)
+    tbr = f.get("tbr") or ((f.get("vbr") or 0) + (f.get("abr") or 0))
+    return tbr * 1000 / 8 * duration if tbr and duration else None
+
+
+def _short_side(f: dict) -> int:
+    w, h = f.get("width") or 0, f.get("height") or 0
+    return min(w, h) if w and h else (h or w or 0)
+
+
+def _plays_in_telegram(f: dict) -> bool:
+    """H.264 video and AAC audio play inline everywhere, iPhone included. Unknown codecs (common on X and Instagram
+    progressive files) are almost always H.264/AAC too."""
+    v, a = (f.get("vcodec") or "").lower(), (f.get("acodec") or "").lower()
+    return (v in ("", "none") or v.startswith(("avc", "h264"))) and (a in ("", "none") or a.startswith(("mp4a", "aac")))
+
+
+def choose_formats(info: dict, have_ffmpeg: bool, budget: float, max_res: int = MAX_RES) -> list:
+    """Best-first list of (yt-dlp format spec, label) that should fit in budget bytes.
+
+    Ranking: known size first, then plays inline in Telegram (H.264/AAC), then resolution, then bitrate. With ffmpeg,
+    separate video + audio streams compete with single files, which is what lifts YouTube from 360p to 1080p."""
+    dur = float(info.get("duration") or 0)
+    fmts = [f for f in info.get("formats") or [] if f.get("format_id") and not f.get("has_drm")
+            and f.get("ext") != "mhtml" and f.get("protocol") != "mhtml"]
+    videos = [f for f in fmts if f.get("acodec") == "none" and f.get("vcodec") != "none"]
+    audios = [f for f in fmts if f.get("vcodec") == "none" and f.get("acodec") not in (None, "none")]
+    singles = [f for f in fmts if f.get("vcodec") != "none" and f.get("acodec") != "none"]
+    ranked = []
+
+    def add(spec, label, est, plays, short, tbr):
+        if est is not None and est > budget:
+            return
+        if short and short > max_res:
+            return
+        ranked.append(((est is not None, plays, short, tbr or 0), spec, label))
+
+    if have_ffmpeg and videos and audios:
+        aac = [a for a in audios if _plays_in_telegram({"acodec": a.get("acodec"), "vcodec": "avc"})]
+        pool = aac or audios
+        # original-language track first (YouTube dubs), then not volume-compressed, then bitrate
+        audio = max(pool, key=lambda a: (a.get("language_preference") or 0, "drc" not in str(a.get("format_id")),
+                                         a.get("abr") or a.get("tbr") or 0))
+        a_size = _size(audio, dur) or (16000 * dur if dur else None)   # ~128 kbps if unknown
+        for v in videos:
+            v_size = _size(v, dur)
+            est = v_size + a_size if v_size is not None and a_size is not None else None
+            add(f"{v['format_id']}+{audio['format_id']}", f"{_short_side(v) or '?'}p video + audio", est,
+                _plays_in_telegram({"vcodec": v.get("vcodec"), "acodec": audio.get("acodec")}),
+                _short_side(v), v.get("tbr") or v.get("vbr"))
+    for f in singles:
+        add(f["format_id"], f"{_short_side(f) or '?'}p single file", _size(f, dur), _plays_in_telegram(f),
+            _short_side(f), f.get("tbr"))
+    ranked.sort(key=lambda r: r[0], reverse=True)
+    seen, out = set(), []
+    for _, spec, label in ranked:
+        if spec not in seen:
+            seen.add(spec)
+            out.append((spec, label))
+    return out
+
+
+def _base_opts(out_dir: str) -> dict:
     opts = {
         "outtmpl": os.path.join(out_dir, "%(id)s.%(ext)s"),
-        "format": (
-            f"best[ext=mp4][filesize<{limit}]/"
-            f"best[filesize<{limit}]/"
-            f"best[filesize_approx<{limit}]/"
-            "best"
-        ),
         "max_filesize": MAX_FILE_SIZE,
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
+        "noprogress": True,
         "socket_timeout": 30,
         "concurrent_fragment_downloads": 8,
         "retries": 3,
     }
+    if FFMPEG:
+        opts["ffmpeg_location"] = FFMPEG
+        opts["merge_output_format"] = "mp4"
     if COOKIES_FILE.exists():
         opts["cookiefile"] = str(COOKIES_FILE)
+    return opts
 
+
+def _saved_file(out_dir: str, expected: Path):
+    if expected.exists():
+        return expected
+    files = [p for p in Path(out_dir).iterdir()   # skip partial files and unmerged pieces like id.f137.mp4
+             if p.is_file() and not p.name.endswith((".part", ".ytdl", ".temp"))
+             and not (len(p.suffixes) > 1 and p.suffixes[-2].startswith(".f"))]
+    return max(files, key=lambda p: p.stat().st_size) if files else None
+
+
+# Video-level fields that must survive when the format is chosen again.
+_KEEP = {"id", "title", "fulltitle", "duration", "duration_string", "extractor", "extractor_key", "webpage_url",
+         "original_url", "webpage_url_basename", "webpage_url_domain", "display_id", "uploader", "uploader_id",
+         "channel", "description", "timestamp", "upload_date", "thumbnail", "thumbnails", "formats", "_type",
+         "playlist", "playlist_index", "epoch", "_version"}
+
+
+def _reselectable(info: dict) -> dict:
+    """A copy of an extracted video with yt-dlp's first format pick removed. extract_info() copies the chosen
+    format's fields (url, requested_formats, size...) onto the video; left in place, a second pass would quietly
+    download that first pick instead of the one asked for."""
+    clean = copy.deepcopy(info)
+    stale = {"requested_formats", "requested_downloads", "format", "format_id"}
+    for f in (clean.get("formats") or []) + (clean.get("requested_formats") or []):
+        stale |= set(f)
+    for k in stale - _KEEP:
+        clean.pop(k, None)
+    return clean
+
+
+def _clear(out_dir: str):
+    for p in Path(out_dir).iterdir():
+        if p.is_file():
+            p.unlink(missing_ok=True)
+
+
+def download_best(info: dict, out_dir: str, base: dict = None, attempts: int = 4) -> tuple:
+    """Download the best quality that fits under MAX_MB from an already extracted info dict.
+    Tries the ranked formats in order (a too-big result is thrown away and the next one tried), then the old selector.
+    Returns (path or None, info, label). Raises yt_dlp DownloadError if every attempt errored."""
+    base = base or _base_opts(out_dir)
+    budget = (MAX_MB - 2) * 1024 * 1024
+    tries = choose_formats(info, bool(base.get("ffmpeg_location")), budget)[:attempts] + [(LEGACY_FORMAT, "fallback")]
+    last_err = None
+    for spec, label in tries:
+        _clear(out_dir)
+        try:
+            with yt_dlp.YoutubeDL({**base, "format": spec}) as ydl:
+                res = ydl.process_ie_result(_reselectable(info), download=True)
+                path = _saved_file(out_dir, Path(ydl.prepare_filename(res)))
+        except yt_dlp.utils.DownloadError as e:
+            last_err = e
+            continue
+        if path and path.stat().st_size <= MAX_FILE_SIZE:
+            print(f"Download: {label} [{spec}], {path.stat().st_size / 1048576:.1f} MB")
+            return path, res, label
+        last_err = None   # skipped or over the limit: try the next, smaller choice
+    _clear(out_dir)
+    if last_err:
+        raise last_err
+    return None, info, ""
+
+
+def download_video(url: str) -> dict:
+    """Blocking download. Returns {path, dir, title, duration, width, height, size_mb}.
+    Caller must delete result['dir'] when done."""
+    out_dir = tempfile.mkdtemp(prefix="agentvid_")
+    base = _base_opts(out_dir)
+    path = None
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            if "entries" in info:
-                info = info["entries"][0]
-            path = Path(ydl.prepare_filename(info))
+        with yt_dlp.YoutubeDL(base) as ydl:
+            info = ydl.extract_info(url, download=False)
+        if info.get("entries") is not None:          # posts with several videos: take the first
+            info = next((e for e in info["entries"] if e), None)
+            if not info:
+                raise yt_dlp.utils.DownloadError("No video found in that post.")
+        path, info, _ = download_best(info, out_dir, base)
+        if path is None:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            raise DownloadFailed(
+                f"No version of this video fits Telegram's {MAX_MB} MB bot limit. "
+                "Use @pesvideodownloader_bot for big files."
+            )
     except yt_dlp.utils.DownloadError as e:
         fb = _x_fallback(url, out_dir) if re.search(r"(twitter|x)\.com/", url) else None
         if fb:
@@ -256,6 +403,8 @@ def tool_download_video(url: str) -> str:
     """Agent tool entry point: downloads and queues the file for the current chat."""
     from core import context
     ctx = context.get()
+    if not ctx.is_owner:
+        return "Video downloads are only available to the bot owner."
     if ctx.platform != "telegram":
         return "Video downloading only works on Telegram right now. Tell the user to send the link there."
     try:

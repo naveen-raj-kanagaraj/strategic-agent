@@ -46,8 +46,8 @@ FIRST_HELLO = ("Hi{name}! I'm an AI assistant: ask me anything, send links, file
 
 WELCOME = (
     "Hi{name}! I'm an AI assistant built by Naveen Raj.\n\n"
-    "I can answer questions, search the web, read links and YouTube videos, download videos from X, Instagram "
-    "and TikTok, read your files and images, understand voice notes, set reminders, and send you a personalised "
+    "I can answer questions, search the web, read links and YouTube videos, read your files "
+    "and images, understand voice notes, set reminders, and send you a personalised "
     "news brief every morning and evening.\n\n"
     "Just ask me anything to get started. Below you can pick topics you want updates on.\n\n"
     "I learn from our chats to personalise answers and news. Chats are saved on the bot owner's hard disk, and the "
@@ -58,8 +58,7 @@ PRIVACY = "\nPrivacy: chats are saved on the bot owner's hard disk, and the owne
 HELP = (
     "Ask me anything, like you would ChatGPT, Claude, Gemini or Perplexity: questions, research with sources, "
     "writing, studying, coding, maths, advice. Send links, PDFs, Word/Excel/PowerPoint files, photos or voice notes "
-    "and I'll read them. Send any link and I'll tell you what it is; add the word \"download\" to a video link "
-    "(X, Instagram, TikTok, YouTube, Reddit) to get the file.\n\n"
+    "and I'll read them. Send any link and I'll tell you what it is.\n\n"
     "In any chat, type @{bot} and your question to post an answer right there.\n\n"
     "/new - start a fresh conversation\n"
     "/search <question> - web answer with sources\n"
@@ -150,6 +149,16 @@ def ids(update: Update) -> tuple:
 
 def is_owner(update: Update) -> bool:
     return store.is_owner("telegram", str(update.effective_user.id))
+
+
+DOWNLOADS_OWNER_ONLY = "Video downloads are only available to the bot owner."
+
+
+def can_download(update) -> bool:
+    """Video downloads are for the owner only: fetching other people's videos for anyone breaks most platforms'
+    terms and can get the bot banned."""
+    user = getattr(update, "effective_user", None)
+    return bool(user) and store.is_owner("telegram", str(user.id))
 
 
 async def send_long(update: Update, text: str, rich: bool = False, markup=None, preview: bool = True):
@@ -1061,8 +1070,12 @@ async def process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, user:
         await run_file_action(update, context, user, waiting, text, "typed")
         return
     if downloader.wants_download(text) or (downloader.only_link(text) and downloader.is_video_link(downloader.any_url(text))):
-        await download_link(update, context, downloader.find_url(text) or downloader.any_url(text))   # file first, no questions
-        return
+        if can_download(update):
+            await download_link(update, context, downloader.find_url(text) or downloader.any_url(text))   # file first, no questions
+            return
+        if downloader.wants_download(text):
+            await update.message.reply_text(DOWNLOADS_OWNER_ONLY)
+            return
     await run_chat(update, context, link_prompt(text))
 
 
@@ -1076,6 +1089,9 @@ def link_prompt(text: str) -> str:
 async def offer_download(message, text: str, ctx):
     """After talking about a bare video link, offer the file with one tap."""
     if downloader.BARE_LINK_NOTE not in text or ctx.outbox:
+        return
+    sender = getattr(message, "from_user", None)
+    if not sender or not store.is_owner("telegram", str(sender.id)):
         return
     url = downloader.any_url(text)
     if not downloader.is_video_link(url):
@@ -1099,6 +1115,9 @@ async def on_download_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = store.get_user(store.uid_for("telegram", str(update.effective_user.id)))
     if user and user.get("blocked"):
         return
+    if not can_download(update):
+        await q.edit_message_text(DOWNLOADS_OWNER_ONLY)
+        return
     try:
         await q.edit_message_reply_markup(reply_markup=None)
     except Exception:
@@ -1109,6 +1128,9 @@ async def on_download_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def download_link(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
+    if not can_download(update):
+        await update.message.reply_text(DOWNLOADS_OWNER_ONLY)
+        return
     store.log_activity(store.uid_for("telegram", str(update.effective_user.id)), "telegram", "download", url)
     status = await update.message.reply_text("Downloading...")
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_VIDEO)
@@ -1514,7 +1536,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 GROUPS_ENABLED = os.getenv("GROUPS_ENABLED", "true").lower() == "true"
 GROUP_INTRO = ("Hi everyone! I'm an AI assistant built by Naveen Raj. Mention me (@{bot}) or reply to one of my "
-               "messages and I'll answer: questions, research, news, links, summaries, video downloads.\n"
+               "messages and I'll answer: questions, research, news, links, summaries.\n"
                "Admins: /botoff pauses me here, /boton brings me back.\n"
                "Messages sent to me are saved on the bot owner's hard disk, and the owner can read them.")
 
@@ -1560,8 +1582,12 @@ async def handle_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         return
     if downloader.wants_download(text) or (downloader.only_link(text) and downloader.is_video_link(downloader.any_url(text))):
-        await download_link(update, context, downloader.find_url(text) or downloader.any_url(text))
-        return
+        if can_download(update):
+            await download_link(update, context, downloader.find_url(text) or downloader.any_url(text))
+            return
+        if downloader.wants_download(text):
+            await msg.reply_text(DOWNLOADS_OWNER_ONLY)
+            return
     text = link_prompt(text)
     quoted = msg.reply_to_message
     if quoted and quoted.from_user and quoted.from_user.id != context.bot.id and (quoted.text or quoted.caption):

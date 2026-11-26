@@ -6,7 +6,7 @@ What it does:
 - Chat with a learned profile of each user: it asks new users what they're interested in, learns from their messages, files and images, and remembers facts long-term
 - Personalised news for every user at 8 AM and 7 PM their local time, plus the owner's full strategic briefing and breaking-news alerts
 - Reads links: articles, PDFs, YouTube transcripts
-- Downloads videos from X, Instagram, TikTok, YouTube Shorts, Reddit, Facebook, Threads (up to 50 MB)
+- Downloads videos from X, Instagram, TikTok, YouTube, Reddit, Facebook, Threads for the owner only: best quality up to 1080p that fits Telegram's 50 MB bot limit (needs ffmpeg: `brew install ffmpeg`)
 - Reads files (PDF, DOCX, PPTX, XLSX, CSV, TXT) and images; remembers images for follow-up questions
 - Voice notes, transcribed on the machine with faster-whisper (free)
 - Reminders (one-off, daily, weekdays, weekly), notes, calculator, web search

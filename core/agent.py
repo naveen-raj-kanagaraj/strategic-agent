@@ -58,6 +58,11 @@ def thinking_level() -> str:
 FAST_MODEL = "claude-haiku-4-5-20251001"
 SMART_MODEL = "claude-sonnet-5-5"
 MAX_TOOL_ROUNDS = 6
+OWNER_TOOL_ROUNDS = 12      # the owner's jobs (download, sort, zip...) take more steps
+
+
+def _rounds() -> int:
+    return OWNER_TOOL_ROUNDS if context.get().is_owner else MAX_TOOL_ROUNDS
 
 DEEP_HINTS = (
     "strategy", "strategic", "plan", "analy", "should i", "why", "compare", "evaluate",
@@ -66,6 +71,9 @@ DEEP_HINTS = (
     "brainstorm", "idea", "ideas", "content", "brand", "positioning", "monetiz",
     "negotiat", "invest", "market", "explain", "review", "feedback", "improve",
     "deep", "detailed", "thorough",
+    # jobs with files or links: many tool steps, which the fast model gives up on
+    "download", "zip", "logo", "image", "scrape", "collect", "organi", "categor", "folder", "convert",
+    "excel", "spreadsheet", "pdf", "deck", "pptx", "csv",
 )
 
 
@@ -278,8 +286,9 @@ def _run_anthropic(uid, model, system, tools, messages, level="off", _retry=Fals
     fs = context.get().force_search
     force = any(t.get("name") == "web_search" for t in tools or []) and (
         fs if fs is not None else wants_search(_last_user_text(messages)))
-    for _ in range(MAX_TOOL_ROUNDS + 1):
-        last_round = _ == MAX_TOOL_ROUNDS
+    rounds = _rounds()
+    for _ in range(rounds + 1):
+        last_round = _ == rounds
         choice = {"type": "none"} if last_round else {"type": "auto"}
         if force and _ == 0:
             if level == "off":
@@ -337,8 +346,9 @@ def _run_openai_compat(uid, provider, model, system, tools, history, level="off"
     ]
     otools = _openai_tools(tools)
     limit_key = "max_completion_tokens" if provider == "openai" else "max_tokens"
-    for _ in range(MAX_TOOL_ROUNDS + 1):
-        last_round = _ == MAX_TOOL_ROUNDS
+    rounds = _rounds()
+    for _ in range(rounds + 1):
+        last_round = _ == rounds
         kwargs = {"model": model, "messages": messages, limit_key: REPLY_MAX_TOKENS + (4000 if level != "off" else 0)}
         if not last_round:
             fs = context.get().force_search

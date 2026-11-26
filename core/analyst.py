@@ -17,7 +17,15 @@ import time
 from core import context
 
 ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "files")
-TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "90"))
+TIMEOUT = int(os.getenv("ANALYSIS_TIMEOUT", "240"))   # web jobs (downloading dozens of files) need minutes
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WEB_HELPERS = f"""
+sys.path.insert(0, {REPO!r})
+try:
+    from core.webfetch import get, page, images_by_section, outline, save, safe_name, full_size, FetchError
+except Exception as _e:
+    print("(web helpers unavailable:", _e, ")")
+"""
 KEEP = 15
 
 PRELUDE = r'''
@@ -81,7 +89,7 @@ def run_python(code: str) -> str:
     charts = tempfile.mkdtemp(prefix="charts_")
     script = os.path.join(charts, "analysis.py")
     with open(script, "w") as f:
-        f.write(PRELUDE + "\n" + code + "\n" + EPILOGUE)
+        f.write(PRELUDE + WEB_HELPERS + "\n" + code + "\n" + EPILOGUE)
     before = {f: os.path.getmtime(f) for f in glob.glob(os.path.join(work, "*"))}
     env = {"PATH": os.environ.get("PATH", ""), "HOME": work, "CHART_DIR": charts, "MPLBACKEND": "Agg",
            "PYTHONIOENCODING": "utf-8"}
@@ -95,6 +103,7 @@ def run_python(code: str) -> str:
         c.outbox.append({"kind": "photo", "path": p})
     made = [f for f in glob.glob(os.path.join(work, "*"))
             if os.path.isfile(f) and (f not in before or os.path.getmtime(f) > before[f])]
+    made.sort(key=lambda f: not f.lower().endswith(".zip"))   # a zip is the deliverable: never crowded out
     for f in made[:6]:     # files the code created or changed (Word, PowerPoint, Excel, PDF, CSV, images, zip...)
         if os.path.getsize(f) > 45 * 1024 * 1024:
             continue

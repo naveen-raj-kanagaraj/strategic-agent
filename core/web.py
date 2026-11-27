@@ -194,6 +194,15 @@ def read_url(url: str) -> str:
     if social:
         return social
 
+    from core import webfetch
+    if webfetch.liquipedia_page(url):   # Liquipedia blocks plain scrapers; its API is the sanctioned way in
+        try:
+            title, text = _html_to_text(webfetch.get(url))
+            return (f"Liquipedia page (read through its API)\nURL: {url}\n\n{text[:MAX_CHARS]}\n\n(To download its "
+                    "logos or images, use run_python: outline(url) and images_by_section(url) list them by section.)")
+        except Exception as e:
+            return f"Couldn't read that Liquipedia page: {str(e)[:200]}"
+
     try:
         current = url
         for _ in range(6):  # follow redirects manually, checking every hop
@@ -215,7 +224,15 @@ def read_url(url: str) -> str:
         return f"Couldn't open the link: {str(e)[:150]}"
 
     if r.status_code >= 400:
-        return f"The site returned an error ({r.status_code}). It may need a login or block bots."
+        try:   # second try with full browser headers before giving up
+            html = webfetch.get(url)
+            title, text = _html_to_text(html)
+            if len(text) >= 200:
+                return f"Title: {title}\nURL: {url}\n\n{text[:MAX_CHARS]}"
+        except Exception:
+            pass
+        return (f"The site returned an error ({r.status_code}) even with browser headers. It may need a login. "
+                "Say so plainly; don't guess what the page says.")
 
     ctype = r.headers.get("content-type", "").lower()
     if "pdf" in ctype or url.lower().endswith(".pdf"):

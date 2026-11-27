@@ -297,7 +297,8 @@ ALL_TOOLS = [
             "'what's the buzz about', 'what is Reddit/X saying', trend checks. Pass comma-separated keywords, main one first.",
             {"query": {**S, "description": "e.g. 'Zepto, Blinkit, quick commerce'"}}, ["query"]),
     _schema("read_url", "Open a link and read it: articles, blog posts, PDFs, and YouTube video transcripts. Use this "
-            "whenever the user shares a link (other than a short video they want downloaded) or asks about a page.",
+            "whenever the user shares a link (other than a short video they want downloaded) or asks about a page. To "
+            "download images, logos or files from a page, use run_python instead.",
             {"url": S}, ["url"]),
     _schema("download_video", "Download a video from an X, Instagram, TikTok, YouTube Shorts, Reddit, Facebook or Threads "
             "link and send the file to the user. Also returns its title and caption.",
@@ -377,7 +378,12 @@ ALL_TOOLS = [
             "Word (python-docx), PowerPoint (python-pptx), Excel (openpyxl, with formatting/formulas), PDF (fitz = "
             "PyMuPDF: read, merge, split, extract, create), images (PIL), CSV/JSON, zip. Any file you save in the "
             "current folder is sent to the user automatically. print() what you need to see; work step by step and "
-            "check the output before answering.", {"code": S}, ["code"]),
+            "check the output before answering. It has the internet, with helpers ready to use: get(url) (page text, "
+            "or bytes with binary=True), page(url) (BeautifulSoup), images_by_section(url) (every image with its "
+            "section, tab, table, name, full-size src and kind: team/flag/icon/image), outline(url, kind=None) (short "
+            "grouped summary: read it first), save(src, path) and safe_name(name). They handle Liquipedia (through its "
+            "API) and sites that block simple bots. To send many files, put them in folders inside a subfolder and "
+            "shutil.make_archive() a .zip in the current folder; only top-level files are sent.", {"code": S}, ["code"]),
     _schema("analysis_files", "Files the user has sent that are available to run_python."),
     _schema("create_pdf", "Make a PDF document and send it: reports, research write-ups, plans, itineraries, comparisons, "
             "study notes, anything the user will keep, print or share, or that is too long for chat. content is "

@@ -43,8 +43,8 @@ New message from me: {message}
 
 Reply with JSON only:
 {{"intent": "one or two sentences: exactly what I want, with pronouns, typos, slang and Hinglish resolved, using the conversation for context",
-  "search": true if answering needs facts about the world that could be new or that you aren't certain of (news, people, companies, prices, acronyms, events, anything after 2025), false for chit-chat, writing from what I gave, maths, my own reminders/notes/email/calendar,
-  "deep": true if it needs real analysis, planning, strategy, comparison or careful reasoning; false for quick facts, chit-chat and simple tasks,
+  "search": true if answering needs facts about the world that could be new or that you aren't certain of (news, people, companies, prices, acronyms, events, anything after 2025), false for chit-chat, writing from what I gave, maths, my own reminders/notes/email/calendar, or when I gave a link and want it read, downloaded or processed,
+  "deep": true if it needs real analysis, planning, strategy, comparison or careful reasoning, or is a multi-step job with files or links (download, collect, sort, convert, build a file); false for quick facts, chit-chat and simple tasks,
   "queries": ["up to 3 precise web search queries that would answer it, with the year if relevant"]}}"""
     try:
         r = client.messages.create(_uid="owner", model=MODEL, max_tokens=300, messages=[{"role": "user", "content": prompt}])
